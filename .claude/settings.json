@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -X POST -H 'Accept: application/json' -H 'Content-Type: application/json' -H 'x-api-key: o0b14hv0-f4d3-84j8-6411-c818t30757l380925' -d '{\"category_id\":1}' https://barexitaliana.al/api/frontend/product/category-wise-products)",
+      "Bash(curl -s -H 'Accept: application/json' -H 'x-api-key: o0b14hv0-f4d3-84j8-6411-c818t30757l380925' https://barexitaliana.al/api/frontend/product/show/olioseta-all-in-one-hair-cream)",
+      "Bash(python3 -c ' *)",
+      "Bash(pnpm --filter @lidh/db db:format)",
+      "Bash(pnpm --filter @lidh/db db:generate)"
+    ]
+  }
+}

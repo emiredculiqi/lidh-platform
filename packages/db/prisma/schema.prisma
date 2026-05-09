@@ -1,0 +1,509 @@
+// Lidh.al platform — Prisma schema
+// Multi-tenant SaaS: shared DB, tenantId on every domain row, RLS applied separately.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+  output          = "../src/generated/prisma"
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum MembershipRole {
+  owner
+  admin
+  agent
+}
+
+enum ChannelKind {
+  web
+  whatsapp
+  instagram
+}
+
+enum ChannelStatus {
+  pending
+  connected
+  disconnected
+  error
+}
+
+enum KnowledgeSourceKind {
+  url
+  file
+  faq
+  sitemap
+}
+
+enum KnowledgeSourceStatus {
+  pending
+  processing
+  ready
+  failed
+}
+
+enum ConversationStatus {
+  open
+  paused
+  resolved
+}
+
+enum MessageRole {
+  user
+  assistant
+  tool
+}
+
+enum LeadStatus {
+  new_      @map("new") // `new` is a JS reserved word; identifier is `new_`, DB value is "new"
+  contacted
+  won
+  lost
+}
+
+enum EventKind {
+  lead_captured
+  human_handoff_requested
+  agent_paused
+  agent_resumed
+  conversation_assigned
+  channel_connected
+  channel_disconnected
+  knowledge_source_indexed
+  knowledge_source_failed
+  demo_link_visited
+}
+
+// Tag on Conversation. Lets us reuse the same agent runtime + tables for
+// real customer chats AND internal preview/test sessions, while keeping the
+// SMB inbox clean (filtered to `kind = customer` by default) and excluding
+// non-customer conversations from usage rollups.
+enum ConversationKind {
+  customer
+  preview
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Identity (global — not tenant-scoped)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id              String   @id @default(cuid())
+  clerkId         String   @unique
+  email           String   @unique
+  name            String?
+  imageUrl        String?
+  // Lidh.al staff flag (synced from Clerk publicMetadata.role === "platform_admin").
+  // Lets you see all tenants and create/configure them on behalf of clients.
+  isPlatformAdmin Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  memberships           Membership[]
+  assignedConversations Conversation[] @relation("ConversationAssignee")
+
+  @@index([clerkId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tenant + membership
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Tenant {
+  id   String @id @default(cuid())
+  slug String @unique
+  name String
+
+  // ─── Plan / billing ─────────────────────────────────────────────────────
+  // FK to Plan. Nullable so a freshly-created tenant can exist before being
+  // assigned a plan (admin onboarding flow). App code blocks usage on tenants
+  // without a plan unless they're on trial. Limits are read from Plan and
+  // optionally overridden per-tenant via planOverrides JSON below.
+  planId        String?
+  // Per-tenant override (negotiated deals, gifts, temporary boosts). Merged
+  // on top of Plan limits. Validated by Zod in packages/core. Example:
+  //   { messagesPerMonth: 10000, expiresAt: "2026-12-31T00:00:00Z" }
+  planOverrides Json      @default("{}")
+  // Trial window. null = not on a trial. Set to a future date to grant the
+  // tenant Pro-tier features until that moment regardless of planId.
+  trialEndsAt   DateTime?
+
+  // The SMB's primary language. New conversations default to this if no locale
+  // is detected from the channel. Use Lidh.al internal codes: "al", "en", "it",
+  // "de", "fr", ... (we map "al" -> "sq" only when handing off to BCP-47 APIs).
+  defaultLocale String @default("al")
+  settings      Json   @default("{}")
+
+  // ─── Demo lifecycle ─────────────────────────────────────────────────────
+  // A demo is a real tenant in every other respect — same agent runtime,
+  // same knowledge ingestion, same conversation tracking. Graduating a demo
+  // to a paid customer = set isDemo=false, clear demoToken/demoExpiresAt.
+  // Invariant (enforced at app layer + by a CHECK constraint added in 2.5):
+  //   isDemo=true  => demoToken IS NOT NULL AND demoExpiresAt IS NOT NULL
+  //   isDemo=false => demoToken IS NULL     AND demoExpiresAt IS NULL
+  // Demos are web-only (validated at app layer when creating Channel rows
+  // for a demo tenant). WhatsApp/Instagram are not available for demos.
+  isDemo        Boolean   @default(false)
+  // Opaque random URL token: demo.lidh.al/{demoToken}. Unguessable by design.
+  demoToken     String?   @unique
+  demoExpiresAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plan             Plan?             @relation(fields: [planId], references: [id], onDelete: SetNull)
+  memberships      Membership[]
+  agents           Agent[]
+  agentPersonas    AgentPersona[]
+  channels         Channel[]
+  knowledgeSources KnowledgeSource[]
+  knowledgeChunks  KnowledgeChunk[]
+  contacts         Contact[]
+  conversations    Conversation[]
+  messages         Message[]
+  leads            Lead[]
+  events           Event[]
+  usageDaily       UsageDaily[]
+
+  @@index([isDemo])
+  @@index([planId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Plans — pricing tiers + capability matrix
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Limits are data, not code. Adding/editing a plan = one row, no deploy.
+// Per-tenant deviations live in Tenant.planOverrides (JSON merged on top).
+// Soft caps (warn) vs hard caps (block) are decided by the app layer based
+// on dimension — typically: messages = soft, channels/seats = hard.
+//
+// Plans are seeded after the first migration (M1) — for now this table is
+// allowed to be empty; tenants without a planId fall through to "no plan"
+// behavior in code.
+
+model Plan {
+  id                  String   @id @default(cuid())
+  slug                String   @unique // "free", "starter", "pro", "enterprise"
+  name                String // human-readable
+  priceLekePerMonth   Int      @default(0) // 0 for free
+  // Quota dimensions (per calendar month). 0 = unlimited.
+  messagesPerMonth    Int      @default(0)
+  leadsPerMonth       Int      @default(0)
+  // Hard feature caps.
+  maxChannels         Int      @default(1)
+  maxLanguages        Int      @default(1)
+  maxKnowledgeSources Int      @default(5)
+  maxTeamMembers      Int      @default(1)
+  // Capability flags — keeps schema stable as we add features. Example:
+  //   { hasInstagram: true, hasWhatsApp: true, hasCustomBranding: false,
+  //     hasApiAccess: false, hasCrmExport: false }
+  features            Json     @default("{}")
+  // Soft-archive a plan when retiring it (existing tenants keep their planId
+  // but new tenants can't pick this plan).
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenants Tenant[]
+}
+
+model Membership {
+  id        String         @id @default(cuid())
+  userId    String
+  tenantId  String
+  role      MembershipRole @default(agent)
+  createdAt DateTime       @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Agent configuration (per tenant — multi-agent allowed but UI surfaces one)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Agent {
+  id               String   @id @default(cuid())
+  tenantId         String
+  name             String
+  // Fallback locale used when a conversation has no locale, or when the
+  // requested locale has no matching AgentPersona. Defaults to "al".
+  defaultLocale    String   @default("al")
+  tone             Json     @default("{}") // e.g. { warmth: 0.7, formality: 0.5 }
+  fallbackBehavior Json     @default("{}") // e.g. { handoff_after_n_unsure: 2 }
+  toolsEnabled     Json     @default("{\"capture_lead\":true,\"request_human_handoff\":true}")
+  modelOverride    String? // null = use platform default (claude-haiku-4-5)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tenant   Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  personas AgentPersona[]
+
+  @@index([tenantId])
+}
+
+// One persona per (agent, language). Adding a language for a tenant = inserting
+// a row here. No schema migration needed when a customer wants Italian + German.
+model AgentPersona {
+  id        String   @id @default(cuid())
+  agentId   String
+  tenantId  String // denormalized for RLS
+  locale    String // "al" | "en" | "it" | "de" | "fr" | ...
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agent  Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, locale])
+  @@index([tenantId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Channels — web widget / WhatsApp / Instagram
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Channel {
+  id             String        @id @default(cuid())
+  tenantId       String
+  kind           ChannelKind
+  status         ChannelStatus @default(pending)
+  // Channel-specific config (kept as JSON for flexibility):
+  //   web:       { allowedOrigins: string[], theme: {...} }
+  //   whatsapp:  { phoneNumberId, wabaId, displayPhoneNumber }
+  //   instagram: { igAccountId, pageId }
+  config         Json          @default("{}")
+  // Encrypted credential blob (Meta access token, etc). Decryption key in env, not DB.
+  credentialsEnc String?       @db.Text
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+
+  // App-layer rule: when Tenant.isDemo = true, only kind = web is allowed.
+  // Enforced when creating Channel rows for demo tenants.
+  @@unique([tenantId, kind]) // one of each kind per tenant; relax later if needed
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Knowledge base (RAG sources + embedded chunks)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model KnowledgeSource {
+  id            String                @id @default(cuid())
+  tenantId      String
+  kind          KnowledgeSourceKind
+  uri           String                @db.Text // URL, file storage key, or FAQ id
+  status        KnowledgeSourceStatus @default(pending)
+  lastCrawledAt DateTime?
+  error         String?               @db.Text
+  meta          Json                  @default("{}")
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  tenant Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  chunks KnowledgeChunk[]
+
+  @@index([tenantId, status])
+}
+
+model KnowledgeChunk {
+  id        String                       @id @default(cuid())
+  tenantId  String // denormalized for RLS + WHERE on vector queries
+  sourceId  String
+  content   String                       @db.Text
+  // Optional locale tag — set during ingestion (langdetect on the source).
+  // Lets retrieval prefer chunks matching the conversation's locale.
+  locale    String?
+  // pgvector embedding — Prisma can't query/order by similarity; we use raw SQL.
+  // Dimension 1536 matches OpenAI ada-002 / Voyage-2; we'll standardize on Voyage AI for now.
+  embedding Unsupported("vector(1536)")?
+  meta      Json                         @default("{}")
+  tokens    Int? // approximate token count for the chunk
+  createdAt DateTime                     @default(now())
+
+  tenant Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  source KnowledgeSource @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  // Vector index (ivfflat / hnsw) is added in a separate raw-SQL migration —
+  // Prisma can't express it directly.
+
+  @@index([tenantId])
+  @@index([sourceId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Contacts (the SMB's customers — unified across channels by phone/email/handle)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Contact {
+  id          String   @id @default(cuid())
+  tenantId    String
+  name        String?
+  phone       String?
+  email       String?
+  igHandle    String?
+  source      String? // first channel we saw them on: "web" | "whatsapp" | "instagram"
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  meta        Json     @default("{}")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  leads         Lead[]
+
+  // Cross-channel unification: same phone/email per tenant collapses to one contact
+  @@unique([tenantId, phone])
+  @@unique([tenantId, email])
+  @@unique([tenantId, igHandle])
+  @@index([tenantId, lastSeenAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Conversations + messages
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Conversation {
+  id               String             @id @default(cuid())
+  tenantId         String
+  channelId        String // FK to Channel
+  contactId        String
+  // customer = real visitor (default; the only kind that surfaces in the SMB inbox
+  //            and counts toward usage rollups).
+  // preview  = platform admin (you) or tenant owner/admin testing the agent.
+  kind             ConversationKind   @default(customer)
+  status           ConversationStatus @default(open)
+  aiPaused         Boolean            @default(false) // human takeover toggle
+  assignedToUserId String?
+  // Locale pinned at thread start (from widget locale, WA user lang, IG locale).
+  // Falls back to Tenant.defaultLocale at write time if null.
+  locale           String?
+  // Channel-specific thread id (WA conversation id, IG thread id, web session)
+  channelRef       String?
+  startedAt        DateTime           @default(now())
+  lastMsgAt        DateTime           @default(now())
+
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel    Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  contact    Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  assignedTo User?     @relation("ConversationAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  messages   Message[]
+  leads      Lead[]
+  events     Event[]
+
+  @@index([tenantId, lastMsgAt])
+  @@index([tenantId, status])
+  @@index([tenantId, kind, lastMsgAt]) // inbox query: WHERE kind='customer'
+  @@index([contactId])
+}
+
+model Message {
+  id             String      @id @default(cuid())
+  conversationId String
+  tenantId       String // denormalized
+  role           MessageRole
+  contentText    String?     @db.Text
+  contentJson    Json? // rich content (attachments, structured replies)
+  // Tool-call fields (only populated when role = "tool" or assistant emitted a tool call):
+  toolName       String?
+  toolInput      Json?
+  toolOutput     Json?
+  // Anthropic token counts for THIS message turn — pulled from response.usage.
+  // Only populated for assistant messages (visitor turns have no LLM cost).
+  // UsageDaily aggregates these into per-tenant per-channel daily totals.
+  tokensIn       Int?
+  tokensOut      Int?
+  createdAt      DateTime    @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+  @@index([tenantId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Leads (captured by the agent or manually)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Lead {
+  id             String     @id @default(cuid())
+  tenantId       String
+  conversationId String?
+  contactId      String?
+  payload        Json       @default("{}") // { name, email, phone, message, ... }
+  status         LeadStatus @default(new_)
+  capturedAt     DateTime   @default(now())
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, capturedAt])
+  @@index([tenantId, status])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Events (append-only audit/analytics log)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Event {
+  id             String    @id @default(cuid())
+  tenantId       String
+  conversationId String?
+  kind           EventKind
+  meta           Json      @default("{}")
+  createdAt      DateTime  @default(now())
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, kind, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Usage rollups — denormalized daily aggregates per (tenant, channel)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// One row per (tenantId, date, channel). Populated by a nightly Inngest job
+// that aggregates the previous UTC day from messages/leads/events. Excludes
+// Conversation.kind != 'customer' so preview/test sessions don't count toward
+// the SMB's usage. Live "today" data falls back to live COUNT/SUM queries on
+// the source tables until the job runs.
+//
+// Per-channel granularity lets the dashboard show "WhatsApp drove 60% of leads
+// this month" without scanning the messages table.
+
+model UsageDaily {
+  id            String      @id @default(cuid())
+  tenantId      String
+  date          DateTime    @db.Date
+  channel       ChannelKind
+  messagesIn    Int         @default(0) // visitor messages
+  messagesOut   Int         @default(0) // assistant messages
+  conversations Int         @default(0) // new conversations started this day
+  leadsCaptured Int         @default(0)
+  toolCalls     Int         @default(0)
+  tokensIn      Int         @default(0) // Anthropic prompt tokens
+  tokensOut     Int         @default(0) // Anthropic completion tokens
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, date, channel])
+  @@index([tenantId, date(sort: Desc)])
+  @@index([tenantId, channel, date])
+}
