@@ -1,0 +1,32 @@
+# Build artifacts and local-only state. The Dockerfile resolves paths from
+# the monorepo root, so these globs apply across the whole repo.
+
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/.cache
+
+**/.env
+**/.env.local
+**/*.env
+
+**/.git
+**/.github
+**/.vscode
+**/.idea
+**/.DS_Store
+**/*.log
+
+# Local Claude / VS Code workspace state
+.claude/
+**/.claude
+
+# Misc
+**/coverage
+**/tmp
+**/posters.html
+**/next-env.d.ts
+**/*.tsbuildinfo
+**/*.md
+!packages/db/prisma/migrations/**

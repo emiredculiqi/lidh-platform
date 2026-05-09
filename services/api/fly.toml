@@ -1,0 +1,49 @@
+# fly.toml — Lidh.al API service.
+# Region: Frankfurt (closest to Albania + same region as the Neon DB).
+#
+# Deploy from the monorepo ROOT, not from this folder, so the build context
+# can see workspace siblings:
+#
+#   fly deploy --config services/api/fly.toml --dockerfile services/api/Dockerfile
+#
+# (or just `fly deploy` from this folder once `fly launch` has done the wiring.)
+
+app = "lidh-api"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+  # Build context is the monorepo root (one level up from this fly.toml).
+  build-target = "runtime"
+
+[env]
+  PORT = "4000"
+  NODE_ENV = "production"
+  # CORS is set per-environment via `fly secrets set`. Defaults below are safe.
+  CORS_ORIGINS = "https://app.lidh.al,https://widget.lidh.al,https://demo.lidh.al"
+
+# DATABASE_URL, ANTHROPIC_API_KEY, and any other secret values live in Fly
+# secrets — set via:  fly secrets set DATABASE_URL=postgresql://... ANTHROPIC_API_KEY=...
+# They are NOT in this file by design.
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  # Scale-to-zero. Saves cost during dev / low traffic. Cold start ~300ms.
+  # Switch to `auto_stop_machines = "off"` and `min_machines_running = 1`
+  # when you're handling production traffic where cold-start latency matters.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/v1/health"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
