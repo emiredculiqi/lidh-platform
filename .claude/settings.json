@@ -8,7 +8,8 @@
       "Bash(pnpm --filter @lidh/db db:generate)",
       "Bash(pnpm --filter @lidh/db build)",
       "Bash(pnpm --filter @lidh/api typecheck)",
-      "Read(//private/tmp/**)"
+      "Read(//private/tmp/**)",
+      "Bash(pnpm --filter @lidh/dashboard typecheck)"
     ]
   }
 }
