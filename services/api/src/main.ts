@@ -6,6 +6,7 @@ import {
 } from "@nestjs/platform-fastify";
 import { Logger } from "@nestjs/common";
 import { AppModule } from "./app.module";
+import { setupSwagger } from "./swagger";
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -31,6 +32,10 @@ async function bootstrap() {
     credentials: true,
   });
 
+  // OpenAPI/Swagger docs at /docs (+ /docs-json). Env-gated inside.
+  // Mounted after setGlobalPrefix so paths are predictable.
+  setupSwagger(app);
+
   // Bind to 0.0.0.0 so Docker/Fly can route traffic in (default 127.0.0.1
   // would only accept loopback connections).
   const port = Number(process.env.PORT ?? 4000);
@@ -40,6 +45,15 @@ async function bootstrap() {
     `🦊 Lidh.al API running on http://0.0.0.0:${port}/v1 (NODE_ENV=${process.env.NODE_ENV ?? "development"})`,
     "Bootstrap",
   );
+  if (
+    process.env.NODE_ENV !== "production" ||
+    process.env.ENABLE_SWAGGER === "true"
+  ) {
+    Logger.log(
+      `📖 API docs at http://0.0.0.0:${port}/docs (spec: /docs-json)`,
+      "Bootstrap",
+    );
+  }
 }
 
 bootstrap().catch((err) => {
