@@ -13,8 +13,14 @@ import type {
   TenantResponseDto,
 } from "./dto/tenant-response.dto";
 
-const DEMO_BASE_URL =
-  process.env.DEMO_BASE_URL?.replace(/\/$/, "") ?? "https://demo.lidh.al";
+// Read at call-time, NOT module top-level: @nestjs/config loads .env during
+// bootstrap, after this module is imported. A top-level const would capture
+// undefined and always fall back to the prod URL.
+function demoBaseUrl(): string {
+  return (
+    process.env.DEMO_BASE_URL?.replace(/\/$/, "") ?? "https://demo.lidh.al"
+  );
+}
 
 /**
  * Tenant lifecycle + the demo flow.
@@ -190,7 +196,7 @@ export class TenantsService {
       name: t.name,
       defaultLocale: t.defaultLocale,
       isDemo: t.isDemo,
-      demoUrl: t.demoToken ? `${DEMO_BASE_URL}/${t.demoToken}` : null,
+      demoUrl: t.demoToken ? `${demoBaseUrl()}/${t.demoToken}` : null,
       demoExpiresAt: t.demoExpiresAt,
       createdAt: t.createdAt,
     };
