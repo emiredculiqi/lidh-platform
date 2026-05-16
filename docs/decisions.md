@@ -206,3 +206,41 @@ wired yet.
   admin route; the public demo + web-chat endpoints stay open by design.
 
 ---
+
+## ADR-004 — WhatsApp as a provider-agnostic channel adapter (M4.1)
+
+**Status:** Accepted · 2026-05-16
+**Context:** User pivoted to M4 (WhatsApp), skipping M2.4 (dashboard) + M3.
+Provider is WhatChimp (memory: project_whatsapp_provider) but it must first
+be validated as a pass-through — can't be done autonomously.
+
+- **Technical term:** *channel adapter behind a transport port* (ports &
+  adapters again; the `WhatsAppTransport` interface + `WHATSAPP_TRANSPORT`
+  DI token).
+- **Plain:** Same chef (`@lidh/core` `runAgent`), different waiter. The
+  WhatsApp waiter takes the whole plated meal (non-streaming) and hands it to
+  a delivery service (the transport). Which delivery company (WhatChimp / Meta
+  / stub) is one swappable line in the module.
+- **Chosen:** Build everything provider-agnostic now — webhook (fast-ack +
+  async process, ADR-002 pattern), tenant resolution by `businessNumber` →
+  whatsapp Channel, contact unification by `(tenantId, phone)`, reuse
+  `runAgent` collected non-streaming, reply via `WhatsAppTransport`.
+  `StubWhatsAppTransport` (logs) is the default binding so the full pipeline
+  is verifiable with zero credentials.
+- **Why:** Keeps momentum without blocking on a third-party validation/secret.
+  Reuses the exact agent runtime — proves the channel-adapter design. The
+  channel/contact/conversation schema needed no changes.
+- **USER GATE (M4.4, blocks completion):** validate WhatChimp exposes
+  programmatic inbound-webhook + outbound-send (pass-through, our agent stays
+  the brain). If yes → implement `WhatChimpTransport` + a payload adapter
+  (raw WhatChimp webhook → normalized InboundWhatsAppMessage) + signature
+  verification; bind it in WhatsappModule (one line). If WhatChimp must BE the
+  bot → fall back to Meta Cloud API. Needs WhatChimp API docs + a test
+  credential from the user.
+- **Deferred:** shared AgentOrchestrator (ChatService/WhatsappService share
+  persona/RAG/persist/executeTool logic — duplicated now to not disturb the
+  verified web path); 24h-window enforcement only matters for proactive/
+  template sends (out of scope; M3); signature-verify guard is provider-
+  specific (lands with the real provider in M4.4).
+
+---
