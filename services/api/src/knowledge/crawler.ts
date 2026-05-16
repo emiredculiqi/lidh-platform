@@ -290,16 +290,21 @@ async function fetchSitemapUrls(origin: URL): Promise<string[]> {
   return [];
 }
 
+/** Pluggable page fetcher (the FetchProvider port, ADR-005). Default = plain
+ *  fetch; the service swaps in the Playwright fetcher on escalation. */
+export type PageFetcher = (url: string) => Promise<string>;
+
 async function fetchInBatches(
   urls: string[],
   concurrency: number,
+  fetcher: PageFetcher,
 ): Promise<Array<{ url: string; html: string } | null>> {
   const results: Array<{ url: string; html: string } | null> = [];
   for (let i = 0; i < urls.length; i += concurrency) {
     const settled = await Promise.allSettled(
       urls.slice(i, i + concurrency).map(async (url) => ({
         url,
-        html: await fetchHtml(url),
+        html: await fetcher(url),
       })),
     );
     for (const r of settled) results.push(r.status === "fulfilled" ? r.value : null);
@@ -310,6 +315,10 @@ async function fetchInBatches(
 export interface CrawlOptions {
   /** Hard page cap (defaults to MAX_PAGES; per-plan override later). */
   maxPages?: number;
+  /** Override the page fetcher (e.g. Playwright on escalation). Default =
+   *  plain fetch. The crawl logic (sitemap, links, extraction) is identical
+   *  regardless of how the HTML was obtained. */
+  fetcher?: PageFetcher;
 }
 
 /**
@@ -323,8 +332,9 @@ export async function crawlSite(
   opts: CrawlOptions = {},
 ): Promise<CrawlResult> {
   const maxPages = Math.max(1, Math.min(opts.maxPages ?? MAX_PAGES, 50));
+  const fetchPage: PageFetcher = opts.fetcher ?? fetchHtml;
   const origin = normalizeUrl(input);
-  const homepageHtml = await fetchHtml(origin.toString());
+  const homepageHtml = await fetchPage(origin.toString());
 
   const waf = detectBotProtection(homepageHtml);
   if (waf) throw new CrawlError(`site is behind ${waf} bot protection`, "bot_protected");
@@ -354,7 +364,7 @@ export async function crawlSite(
     frontier = frontier.slice(FETCH_CONCURRENCY);
     for (const u of batch) visited.add(u);
 
-    const fetched = await fetchInBatches(batch, FETCH_CONCURRENCY);
+    const fetched = await fetchInBatches(batch, FETCH_CONCURRENCY, fetchPage);
     const harvested: string[] = [];
     for (const r of fetched) {
       if (pages.length >= maxPages || total >= MAX_TOTAL_CHARS) break;

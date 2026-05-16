@@ -59,18 +59,32 @@ RUN pnpm --filter @lidh/api build
 RUN pnpm --filter @lidh/api... --prod deploy /deploy
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Stage 4: runtime — minimal layer with only what's needed at runtime
+# Stage 4: runtime
+#
+# Debian slim (NOT alpine): Playwright/Chromium needs glibc + system libs that
+# alpine doesn't provide well. `playwright install --with-deps chromium` pulls
+# the matched Chromium + its apt deps. This is the documented approach and is
+# version-pinned via the `playwright` dep in package.json.
+#
+# NOTE (ADR-005): not buildable/verifiable locally (no Docker on the dev
+# machine). Validated when Fly's remote builder builds it at deploy. Bump the
+# Fly machine memory (fly.toml 512MB → ~1GB) for Chromium before deploying.
 # ─────────────────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS runtime
+FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
-    PORT=4000
+    PORT=4000 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Non-root user for security (Fly recommends this).
-RUN addgroup -g 1001 -S app && adduser -S app -G app
-USER app
+RUN groupadd -g 1001 app && useradd -u 1001 -g app -m app
 
 COPY --from=builder --chown=app:app /deploy ./
 
+# Install the Chromium build matched to the bundled playwright version, plus
+# its OS dependencies, into a shared path readable by the non-root user.
+RUN npx --yes playwright install --with-deps chromium \
+    && chown -R app:app /ms-playwright
+
+USER app
 EXPOSE 4000
 CMD ["node", "dist/main.js"]

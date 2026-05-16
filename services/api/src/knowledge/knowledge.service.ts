@@ -3,6 +3,10 @@ import type { KnowledgeSource } from "@lidh/db";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { EmbeddingService } from "../common/embedding/embedding.service";
 import { crawlSite, CrawlError } from "./crawler";
+import {
+  playwrightFetch,
+  closePlaywrightBrowser,
+} from "./fetch/playwright-fetcher";
 import { chunkPages } from "./chunk";
 import type { CreateSourceDto } from "./dto/create-source.dto";
 
@@ -111,7 +115,26 @@ export class KnowledgeService {
         );
       }
 
-      const crawl = await crawlSite(source.uri);
+      // Tier 1: plain fetch. Tier 2 (ADR-005): on bot-protection or an
+      // empty/JS-shell result, automatically retry the whole crawl with a
+      // real headless Chromium (Playwright). If Tier 2 also fails, the catch
+      // below maps it to the fail-loud message + upload/paste CTA.
+      let crawl;
+      try {
+        crawl = await crawlSite(source.uri);
+      } catch (e) {
+        if (
+          e instanceof CrawlError &&
+          (e.code === "bot_protected" || e.code === "empty")
+        ) {
+          this.logger.warn(
+            `[${sourceId}] plain fetch hit "${e.code}" — escalating to Playwright`,
+          );
+          crawl = await crawlSite(source.uri, { fetcher: playwrightFetch });
+        } else {
+          throw e;
+        }
+      }
       const chunks = chunkPages(crawl.pages);
       if (chunks.length === 0) throw new Error("no_content_extracted");
 
@@ -182,6 +205,9 @@ export class KnowledgeService {
         },
       });
       this.logger.error(`ingest ${sourceId} failed: ${message}`);
+    } finally {
+      // Idempotent — no-op if Playwright never launched (plain-fetch path).
+      await closePlaywrightBrowser();
     }
   }
 }

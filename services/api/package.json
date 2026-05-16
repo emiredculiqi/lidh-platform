@@ -24,6 +24,7 @@
     "class-validator": "^0.15.1",
     "fastify": "^4.28.1",
     "openai": "^6.38.0",
+    "playwright": "^1.60.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
