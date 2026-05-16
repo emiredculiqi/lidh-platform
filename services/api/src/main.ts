@@ -4,7 +4,7 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from "@nestjs/platform-fastify";
-import { Logger } from "@nestjs/common";
+import { Logger, ValidationPipe } from "@nestjs/common";
 import { AppModule } from "./app.module";
 import { setupSwagger } from "./swagger";
 
@@ -21,6 +21,16 @@ async function bootstrap() {
   // Version every route under /v1. Lets us ship /v2 later without breaking
   // pinned widgets, webhooks, or third-party integrations.
   app.setGlobalPrefix("v1");
+
+  // Validate + strip request bodies against the class-validator DTOs.
+  // whitelist: drop unknown props. transform: instantiate the DTO class.
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: false,
+    }),
+  );
 
   // CORS — comma-separated allowlist via env. Wildcard "*" only meaningful in dev.
   const corsOrigins = (process.env.CORS_ORIGINS ?? "*")

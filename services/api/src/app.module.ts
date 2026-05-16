@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { PrismaModule } from "./common/prisma/prisma.module";
 import { TenantContextModule } from "./common/tenant-context/tenant-context.module";
 import { HealthModule } from "./health/health.module";
+import { ChatModule } from "./chat/chat.module";
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { HealthModule } from "./health/health.module";
     PrismaModule,
     TenantContextModule,
     HealthModule,
+    ChatModule,
   ],
 })
 export class AppModule {}
