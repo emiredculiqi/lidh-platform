@@ -9,6 +9,7 @@ import { KnowledgeModule } from "./knowledge/knowledge.module";
 import { TenantsModule } from "./tenants/tenants.module";
 import { ConversationsModule } from "./conversations/conversations.module";
 import { LeadsModule } from "./leads/leads.module";
+import { AgentsModule } from "./agents/agents.module";
 import { WhatsappModule } from "./channels/whatsapp/whatsapp.module";
 
 @Module({
@@ -28,6 +29,7 @@ import { WhatsappModule } from "./channels/whatsapp/whatsapp.module";
     TenantsModule,
     ConversationsModule,
     LeadsModule,
+    AgentsModule,
     WhatsappModule,
   ],
 })

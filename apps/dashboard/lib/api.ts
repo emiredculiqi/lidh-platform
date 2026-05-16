@@ -26,6 +26,20 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}/v1${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`API ${path} → ${res.status} ${text}`);
+  }
+  return res.json() as Promise<T>;
+}
+
 export const apiBase = BASE;
 
 export type Tenant = {
@@ -78,6 +92,14 @@ export type Thread = {
   }[];
 };
 
+export type Agent = {
+  id: string;
+  name: string;
+  defaultLocale: string;
+  toolsEnabled: Record<string, boolean>;
+  personas: { locale: string; content: string }[];
+};
+
 export type Lead = {
   id: string;
   status: string;
@@ -100,4 +122,10 @@ export const api = {
     get<ConversationListItem[]>(`/conversations?tenantSlug=${slug}`),
   getThread: (id: string) => get<Thread>(`/conversations/${id}`),
   listLeads: (slug: string) => get<Lead[]>(`/leads?tenantSlug=${slug}`),
+  getAgent: (slug: string) => get<Agent>(`/agents?tenantSlug=${slug}`),
+  upsertPersona: (body: {
+    tenantSlug: string;
+    locale: string;
+    content: string;
+  }) => put<Agent>("/agents/personas", body),
 };

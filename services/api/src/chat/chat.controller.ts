@@ -1,6 +1,6 @@
-import { Body, Controller, Post, Res } from "@nestjs/common";
+import { Body, Controller, Post, Req, Res } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
-import type { FastifyReply } from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { ChatService } from "./chat.service";
 import { ChatWebRequestDto } from "./dto/chat-web-request.dto";
 
@@ -36,12 +36,21 @@ export class ChatController {
   })
   async web(
     @Body() dto: ChatWebRequestDto,
+    @Req() req: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
+    // Manual raw writeHead bypasses Fastify's CORS plugin, so the browser
+    // would block this cross-origin stream ("Failed to fetch"). Re-apply CORS
+    // here, mirroring the global config: reflect the request Origin (the
+    // global allowlist is "*" in dev) so the widget/dashboard can read it.
+    const origin = (req.headers.origin as string | undefined) ?? "*";
     reply.raw.writeHead(200, {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       Connection: "keep-alive",
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Credentials": "true",
+      Vary: "Origin",
     });
 
     const send = (event: string, data: unknown) => {
