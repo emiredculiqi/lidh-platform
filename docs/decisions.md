@@ -244,3 +244,51 @@ be validated as a pass-through — can't be done autonomously.
   specific (lands with the real provider in M4.4).
 
 ---
+
+## ADR-005 — Knowledge depth: automate scraping, fail loudly (M2.5)
+
+**Status:** Accepted · 2026-05-17
+**Context:** Demo quality = knowledge quality. Plain fetch fails on
+JS-rendered sites and bot-protected sites; many SMBs have no/thin sites.
+User wants max automation, a clear UI signal when a site truly can't be
+processed, and Playwright for the headless cases.
+
+- **Technical term:** *tiered FetchProvider (ports & adapters) with automatic
+  escalation*, + explicit failure-reason surfacing, + S3-compatible blob
+  storage abstraction.
+- **Plain:** Try the cheap way; if the door's locked, send the robot with a
+  real browser; if it's *still* locked, put a clear sign on it ("can't read
+  this — upload the docs instead") rather than failing silently.
+- **Chosen:**
+  - **FetchProvider port**, escalation: Tier1 plain `fetch` → Tier2
+    **Playwright** (real Chromium) auto-triggered on WAF-detect / JS-shell /
+    thin content → Tier3 paid unblocker (port only, **unwired** — user
+    deferred; will do manual work instead).
+  - **Failure-UX:** propagate `CrawlError.code`
+    (bot_protected|unreachable|empty|too_large|invalid_url) into
+    `KnowledgeSource.error`; dashboard maps each to a human message + a
+    "upload a document / paste content" call-to-action. No silent failures.
+  - **Deeper crawl:** read `robots.txt` `Sitemap:` directive + CMS fallbacks
+    (/wp-sitemap.xml etc.) + depth-2 internal-link follow; page cap per plan.
+  - **Document upload:** store the **original** (enables re-ingest with a
+    better chunker without re-upload). Storage behind an **S3-compatible
+    port** (`@aws-sdk/client-s3`) — backend = env (MinIO | Cloudflare R2 |
+    S3), swappable, no lock-in. Dev default: local MinIO container (zero
+    signup). Prod backend decided at deploy (R2 recommended: free tier
+    covers tiny business docs, zero egress, zero ops; MinIO equally valid).
+  - **Paste-text source** (`kind=faq`): direct chunk→embed, no fetch — the
+    always-works manual lever.
+- **Why:** Playwright rescues the *common* failure (JS-rendered SMB sites),
+  not hardcore WAFs — honest scope; the failure-UX + upload/paste closes the
+  loop for the unfixable residue. S3 abstraction honors the user's MinIO
+  preference without coupling.
+- **Honest limits / flagged:** Playwright ≠ universal WAF bypass. It adds
+  ~300MB Chromium to services/api Docker + needs more RAM → Fly machine
+  memory bump at deploy (current fly.toml 512MB). Heavy headless crawl
+  reinforces the deferred move to a durable queue (ADR-002 / Inngest, M3);
+  in-process stays for M2 with tight concurrency/timeouts.
+- **Order:** failure-UX + deeper crawl first (no new deps) → FetchProvider +
+  Playwright (touches Docker) → S3 + upload + paste (needs storage; local
+  MinIO dev).
+
+---
