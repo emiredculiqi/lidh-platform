@@ -182,3 +182,27 @@ tens of seconds — too long to block an HTTP request.
   refactor, same as the chatbot.
 
 ---
+
+## ADR-003 — Admin endpoints unauthenticated in M2 (M2 Phase 2.3)
+
+**Status:** Accepted (temporary) · 2026-05-16
+**Context:** `POST /v1/tenants`, `/graduate`, knowledge management, etc. are
+admin actions, but Clerk JWT auth + the TenantContext resolution are a later
+M2 step. Building them auth-gated now would block progress on auth that isn't
+wired yet.
+
+- **Technical term:** *deliberate temporary trust boundary gap*, tracked.
+- **Plain:** The staff door has no lock yet because the lock (Clerk auth) is
+  being fitted later. We're building the rooms behind the door first; the door
+  gets its lock before anyone moves in.
+- **Chosen:** Ship admin endpoints unauthenticated through M2 build phases,
+  consistent with chat/knowledge. Each admin controller carries a comment
+  saying so. The public demo-resolution endpoint (`GET /v1/demo/:token`) is
+  *intentionally* public and stays so.
+- **Why:** Unblocks 2.3/2.4 without a half-built auth dependency. Low real
+  risk in dev (nothing deployed publicly yet).
+- **MUST be closed before:** any public deployment. The dedicated M2 auth step
+  adds the Clerk guard + `@RequireRole`/`isPlatformAdmin` checks to every
+  admin route; the public demo + web-chat endpoints stay open by design.
+
+---

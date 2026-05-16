@@ -6,6 +6,7 @@ import { TenantContextModule } from "./common/tenant-context/tenant-context.modu
 import { HealthModule } from "./health/health.module";
 import { ChatModule } from "./chat/chat.module";
 import { KnowledgeModule } from "./knowledge/knowledge.module";
+import { TenantsModule } from "./tenants/tenants.module";
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { KnowledgeModule } from "./knowledge/knowledge.module";
     HealthModule,
     ChatModule,
     KnowledgeModule,
+    TenantsModule,
   ],
 })
 export class AppModule {}
