@@ -112,6 +112,13 @@ export class TenantsService {
     }
   }
 
+  async listTenants(): Promise<TenantResponseDto[]> {
+    const rows = await this.prisma.client.tenant.findMany({
+      orderBy: { createdAt: "desc" },
+    });
+    return rows.map((t) => this.toTenantResponse(t));
+  }
+
   async getTenant(slug: string): Promise<TenantResponseDto> {
     const t = await this.prisma.client.tenant.findUnique({ where: { slug } });
     if (!t) throw new NotFoundException("tenant_not_found");

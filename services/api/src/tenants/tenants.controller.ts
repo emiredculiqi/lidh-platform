@@ -37,6 +37,18 @@ export class TenantsController {
     return this.tenants.createTenant(dto);
   }
 
+  @Get("tenants")
+  @ApiOperation({
+    summary: "List all tenants (platform-admin)",
+    description:
+      "Every tenant, newest first. Demos include their demoUrl. Backs the " +
+      "dashboard tenants list. _Admin endpoint — see ADR-003._",
+  })
+  @ApiOkResponse({ type: TenantResponseDto, isArray: true })
+  list(): Promise<TenantResponseDto[]> {
+    return this.tenants.listTenants();
+  }
+
   @Get("tenants/:slug")
   @ApiOperation({ summary: "Get a tenant by slug" })
   @ApiOkResponse({ type: TenantResponseDto })

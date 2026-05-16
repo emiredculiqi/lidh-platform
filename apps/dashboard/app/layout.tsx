@@ -13,7 +13,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider>
+    // afterSignOutUrl: where Clerk sends the user after sign-out. Without it,
+    // sign-out leaves them on the (now unauthenticated) current route, which
+    // the middleware blocks → blank page. /sign-in is public and renders fine.
+    <ClerkProvider afterSignOutUrl="/sign-in">
       <html lang="en">
         <body className="min-h-screen antialiased">{children}</body>
       </html>
