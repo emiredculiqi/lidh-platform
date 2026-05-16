@@ -76,10 +76,14 @@ export default async function TenantOverview({
                     <td className="px-4 py-2">
                       <span className="text-brand-ink/50">{s.kind}</span>{" "}
                       <span className="break-all">{s.uri}</span>
-                      {s.error ? (
-                        <span className="block text-xs text-red-600">
-                          {s.error}
-                        </span>
+                      {s.status === "failed" && s.error ? (
+                        <div className="mt-1 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+                          <span aria-hidden>⚠️</span>
+                          <span>
+                            <strong>Couldn&apos;t process this source.</strong>{" "}
+                            {s.error}
+                          </span>
+                        </div>
                       ) : null}
                     </td>
                     <td className="px-4 py-2">

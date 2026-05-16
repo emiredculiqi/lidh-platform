@@ -163,15 +163,16 @@ export class KnowledgeService {
         `ingested ${sourceId}: ${crawl.pages.length} pages → ${chunks.length} chunks (${vectors ? "embedded" : "NO embeddings — set OPENAI_API_KEY"})`,
       );
     } catch (err) {
-      const message =
-        err instanceof CrawlError
-          ? `${err.code}: ${err.message}`
-          : err instanceof Error
-            ? err.message
-            : "unknown_error";
+      const code = err instanceof CrawlError ? err.code : "error";
+      const message = friendlyCrawlError(code);
       await db.knowledgeSource.update({
         where: { id: sourceId },
-        data: { status: "failed", error: message },
+        data: {
+          status: "failed",
+          error: message,
+          // Keep the machine code for the UI to branch on / future logic.
+          meta: { failureCode: code },
+        },
       });
       await db.event.create({
         data: {
@@ -182,5 +183,28 @@ export class KnowledgeService {
       });
       this.logger.error(`ingest ${sourceId} failed: ${message}`);
     }
+  }
+}
+
+/** Map a crawl failure code to a clear, actionable message for the dashboard.
+ *  Every "we can't read this site" case points the user at the fallbacks
+ *  (document upload / paste) that always work. */
+function friendlyCrawlError(code: string): string {
+  switch (code) {
+    case "bot_protected":
+      return "This site is behind bot protection (e.g. Cloudflare) and couldn't be read automatically. Upload the content as a document, or paste it manually.";
+    case "unreachable":
+      return "The site couldn't be reached (it may be down, slow, or blocking us). Try again later, or upload/paste the content instead.";
+    case "blocked":
+      return "This address can't be crawled (non-public host). Use a public URL, or upload/paste the content.";
+    case "invalid_url":
+      return "That doesn't look like a valid website address. Check the URL, or upload/paste the content instead.";
+    case "too_large":
+      return "The site is too large to process automatically. Upload the key documents, or paste the important content.";
+    case "empty":
+    case "no_content_extracted":
+      return "We reached the site but found no readable text (it may be image-only or JavaScript-heavy). Upload a document or paste the content instead.";
+    default:
+      return "Couldn't process this source automatically. Upload a document or paste the content instead.";
   }
 }

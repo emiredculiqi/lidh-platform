@@ -3,7 +3,7 @@
 // copy stays untouched (ADR-001 #8); consolidation is a later refactor.
 import * as cheerio from "cheerio";
 
-export const MAX_PAGES = 15;
+export const MAX_PAGES = 25;
 export const MAX_TOTAL_CHARS = 150_000;
 export const PER_PAGE_CHAR_CAP = 10_000;
 export const FETCH_TIMEOUT_MS = 8_000;
@@ -228,11 +228,43 @@ function parseSitemap(xml: string, origin: URL): string[] {
   }
   return out;
 }
+/** robots.txt usually declares the real sitemap location (esp. CMS sites
+ *  that don't use /sitemap.xml). This is the single biggest "find all pages"
+ *  win — read it before guessing standard paths. */
+async function fetchRobotsSitemaps(origin: URL): Promise<string[]> {
+  try {
+    const txt = await fetchText(new URL("/robots.txt", origin).toString());
+    if (!txt) return [];
+    const out: string[] = [];
+    const re = /^\s*sitemap:\s*(\S+)\s*$/gim;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(txt)) !== null) {
+      try {
+        const u = new URL(m[1], origin);
+        if (u.hostname.toLowerCase() === origin.hostname.toLowerCase()) {
+          out.push(u.toString());
+        }
+      } catch {
+        /* skip malformed */
+      }
+    }
+    return [...new Set(out)];
+  } catch {
+    return [];
+  }
+}
+
 async function fetchSitemapUrls(origin: URL): Promise<string[]> {
-  for (const url of [
+  // robots.txt-declared sitemaps first, then standard + common CMS paths.
+  const candidates = [
+    ...(await fetchRobotsSitemaps(origin)),
     new URL("/sitemap.xml", origin).toString(),
     new URL("/sitemap_index.xml", origin).toString(),
-  ]) {
+    new URL("/sitemap-index.xml", origin).toString(),
+    new URL("/wp-sitemap.xml", origin).toString(),
+    new URL("/sitemap/sitemap.xml", origin).toString(),
+  ];
+  for (const url of [...new Set(candidates)]) {
     try {
       const xml = await fetchText(url);
       if (!xml) continue;
@@ -275,8 +307,22 @@ async function fetchInBatches(
   return results;
 }
 
-/** Crawl a site: homepage + prioritized internal/sitemap pages. */
-export async function crawlSite(input: string): Promise<CrawlResult> {
+export interface CrawlOptions {
+  /** Hard page cap (defaults to MAX_PAGES; per-plan override later). */
+  maxPages?: number;
+}
+
+/**
+ * Crawl: homepage → sitemap(+robots.txt)/homepage links → and then keep
+ * harvesting internal links from each fetched page (depth-2+), prioritized,
+ * until the page cap or the total-chars budget is hit. This finds pages that
+ * are neither in a sitemap nor linked from the homepage.
+ */
+export async function crawlSite(
+  input: string,
+  opts: CrawlOptions = {},
+): Promise<CrawlResult> {
+  const maxPages = Math.max(1, Math.min(opts.maxPages ?? MAX_PAGES, 50));
   const origin = normalizeUrl(input);
   const homepageHtml = await fetchHtml(origin.toString());
 
@@ -284,26 +330,50 @@ export async function crawlSite(input: string): Promise<CrawlResult> {
   if (waf) throw new CrawlError(`site is behind ${waf} bot protection`, "bot_protected");
 
   const homepage = extractReadable(homepageHtml, origin.toString());
-  const candidatePool = [
-    ...new Set([
-      ...(await fetchSitemapUrls(origin)),
-      ...collectInternalLinks(homepageHtml, origin),
-    ]),
-  ].filter((u) => u !== origin.toString());
-
-  const ordered = prioritizeLinks(candidatePool).slice(0, MAX_PAGES - 1);
-  const fetched = await fetchInBatches(ordered, FETCH_CONCURRENCY);
-
   const pages: CrawledPage[] = [{ url: origin.toString(), ...homepage }];
   let total = homepage.text.length;
-  for (const r of fetched) {
-    if (total >= MAX_TOTAL_CHARS) break;
-    if (!r) continue;
-    const ex = extractReadable(r.html, r.url);
-    if (!ex.text) continue;
-    const trimmed = ex.text.slice(0, MAX_TOTAL_CHARS - total);
-    pages.push({ url: r.url, title: ex.title, text: trimmed });
-    total += trimmed.length;
+
+  const visited = new Set<string>([origin.toString()]);
+  let frontier = prioritizeLinks(
+    [
+      ...new Set([
+        ...(await fetchSitemapUrls(origin)),
+        ...collectInternalLinks(homepageHtml, origin),
+      ]),
+    ].filter((u) => !visited.has(u)),
+  );
+
+  while (
+    pages.length < maxPages &&
+    total < MAX_TOTAL_CHARS &&
+    frontier.length > 0
+  ) {
+    const batch = frontier
+      .slice(0, FETCH_CONCURRENCY)
+      .filter((u) => !visited.has(u));
+    frontier = frontier.slice(FETCH_CONCURRENCY);
+    for (const u of batch) visited.add(u);
+
+    const fetched = await fetchInBatches(batch, FETCH_CONCURRENCY);
+    const harvested: string[] = [];
+    for (const r of fetched) {
+      if (pages.length >= maxPages || total >= MAX_TOTAL_CHARS) break;
+      if (!r) continue;
+      const ex = extractReadable(r.html, r.url);
+      if (!ex.text) continue;
+      const trimmed = ex.text.slice(0, MAX_TOTAL_CHARS - total);
+      pages.push({ url: r.url, title: ex.title, text: trimmed });
+      total += trimmed.length;
+      // Depth-2+: queue this page's internal links too.
+      for (const l of collectInternalLinks(r.html, origin)) {
+        if (!visited.has(l)) harvested.push(l);
+      }
+    }
+    if (harvested.length) {
+      frontier = prioritizeLinks([
+        ...new Set([...frontier, ...harvested]),
+      ]);
+    }
   }
 
   if (total < 30) throw new CrawlError("no readable content found", "empty");
