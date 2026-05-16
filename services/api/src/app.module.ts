@@ -1,9 +1,11 @@
 import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { PrismaModule } from "./common/prisma/prisma.module";
+import { EmbeddingModule } from "./common/embedding/embedding.module";
 import { TenantContextModule } from "./common/tenant-context/tenant-context.module";
 import { HealthModule } from "./health/health.module";
 import { ChatModule } from "./chat/chat.module";
+import { KnowledgeModule } from "./knowledge/knowledge.module";
 
 @Module({
   imports: [
@@ -14,9 +16,11 @@ import { ChatModule } from "./chat/chat.module";
       cache: true,
     }),
     PrismaModule,
+    EmbeddingModule,
     TenantContextModule,
     HealthModule,
     ChatModule,
+    KnowledgeModule,
   ],
 })
 export class AppModule {}

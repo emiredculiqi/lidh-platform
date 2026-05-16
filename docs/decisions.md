@@ -141,3 +141,44 @@ chose ↔ why it matters.
   `vector(1536)` already fits it.
 
 ---
+
+## ADR-002 — Knowledge ingestion runs in-process (M2 Phase 2.2)
+
+**Status:** Accepted · 2026-05-16
+**Context:** Tenants need knowledge by giving a URL (crawl → chunk → embed →
+store), not hand-seeding. Crawling several pages + embedding takes seconds to
+tens of seconds — too long to block an HTTP request.
+
+- **Technical term:** *in-process fire-and-forget background work with
+  status-tracked state* (vs. a durable external job queue).
+- **Plain:** When you ask the kitchen to restock the pantry from a supplier
+  (crawl a website), the request desk doesn't make you stand there waiting —
+  it says "got it, restocking" (HTTP 202) and a kitchen hand does it in the
+  background. You check a status board (`GET /v1/knowledge/sources/:id`) to
+  see when it's done.
+- **Chosen:** `POST /v1/knowledge/sources` creates the source (`pending`),
+  returns 202, then `KnowledgeService.ingest()` runs **un-awaited** inside the
+  Node process, moving status `processing → ready | failed` (+ `error` text).
+  A `POST /:id/reingest` gives manual recovery.
+- **Why:** The API is a long-lived Fly process (not serverless), so in-process
+  async is fine for M2's scale (small business sites, tens of chunks). It adds
+  **zero new infrastructure**. The known limitation — a process restart can
+  strand a source in `processing` — is acceptable for M2 and covered by the
+  reingest endpoint.
+- **Superseded by (planned):** M3 moves ingestion to a durable queue
+  (**Inngest**) for retries, observability, and horizontal scale. The
+  `KnowledgeService.ingest()` body stays the same; only the trigger changes.
+  Deferring keeps M2 free of another external account/dependency.
+
+### Crawler reuse
+
+- **Chosen:** Lift the battle-tested crawler from
+  `apps/marketing/lib/demo/crawler.ts` into `services/api/src/knowledge/`
+  (dropping the Next.js `import "server-only"`). Marketing's copy is left
+  untouched (ADR-001 #8).
+- **Why:** It already handles URL normalization, bot-protection detection,
+  sitemap parsing, link prioritization, and readable extraction. Rewriting
+  would be wasteful and risky. Consolidating the two copies is a later
+  refactor, same as the chatbot.
+
+---
