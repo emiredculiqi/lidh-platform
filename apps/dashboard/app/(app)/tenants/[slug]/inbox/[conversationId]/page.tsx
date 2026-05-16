@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { Markdown } from "@/components/Markdown";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +56,13 @@ export default async function ThreadPage({
                     : "bg-brand-blue text-white"
                 }`}
               >
-                <p className="whitespace-pre-wrap">{m.contentText}</p>
+                {isUser ? (
+                  <p className="whitespace-pre-wrap">{m.contentText}</p>
+                ) : (
+                  <div className="text-sm">
+                    <Markdown content={m.contentText ?? ""} />
+                  </div>
+                )}
                 <p
                   className={`mt-1 text-[10px] ${
                     isUser ? "text-brand-ink/40" : "text-white/60"

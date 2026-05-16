@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { apiBase } from "@/lib/api";
+import { Markdown } from "./Markdown";
 
 type Msg = { role: "user" | "assistant"; text: string };
 
@@ -100,13 +101,21 @@ export function DemoChat({
             className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
           >
             <div
-              className={`max-w-[80%] whitespace-pre-wrap rounded-2xl px-4 py-2 text-sm ${
+              className={`max-w-[80%] rounded-2xl px-4 py-2 text-sm ${
                 m.role === "user"
-                  ? "bg-brand-blue text-white"
+                  ? "whitespace-pre-wrap bg-brand-blue text-white"
                   : "border border-brand-ink/10 bg-brand-fog text-brand-ink"
               }`}
             >
-              {m.text || (busy ? "…" : "")}
+              {m.role === "assistant" ? (
+                m.text ? (
+                  <Markdown content={m.text} />
+                ) : (
+                  busy && "…"
+                )
+              ) : (
+                m.text
+              )}
             </div>
           </div>
         ))}
