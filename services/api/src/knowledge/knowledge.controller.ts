@@ -16,6 +16,7 @@ import {
 import type { KnowledgeSource } from "@lidh/db";
 import { KnowledgeService } from "./knowledge.service";
 import { CreateSourceDto } from "./dto/create-source.dto";
+import { TextSourceDto, UploadDocDto } from "./dto/text-source.dto";
 import { SourceResponseDto } from "./dto/source-response.dto";
 
 type SourceWithCount = KnowledgeSource & { _count: { chunks: number } };
@@ -42,6 +43,41 @@ export class KnowledgeController {
   @ApiOkResponse({ type: SourceResponseDto })
   create(@Body() dto: CreateSourceDto): Promise<KnowledgeSource> {
     return this.knowledge.createSource(dto);
+  }
+
+  @Post("text")
+  @HttpCode(202)
+  @ApiOperation({
+    summary: "Add a paste-text knowledge source",
+    description:
+      "**Always works** — no crawl, no file. Paste a business " +
+      "description / FAQ / price list; it's chunked + embedded directly. " +
+      "The fastest way to hand-tune an agent's knowledge, or the fallback " +
+      "when a site can't be crawled.\n\n" +
+      "```bash\ncurl -X POST http://localhost:4000/v1/knowledge/text \\\n" +
+      '  -H "Content-Type: application/json" \\\n' +
+      '  -d \'{"tenantSlug":"acme-coffee","title":"Hours",' +
+      '"content":"Open Mon–Sat 8–22, Sun 9–18. Delivery in Tirana only."}\'\n```',
+  })
+  @ApiOkResponse({ type: SourceResponseDto })
+  addText(@Body() dto: TextSourceDto): Promise<KnowledgeSource> {
+    return this.knowledge.addTextSource(dto);
+  }
+
+  @Post("upload")
+  @HttpCode(202)
+  @ApiOperation({
+    summary: "Upload a document (PDF / DOCX / XLSX / TXT / MD / CSV)",
+    description:
+      "For businesses with no/thin website. File is base64 in the JSON " +
+      "body (≤~15MB). Text is extracted → chunked → embedded; the original " +
+      "is retained in object storage **if configured** (enables reingest) " +
+      "and skipped gracefully otherwise. Poll the returned source for " +
+      "status. Unsupported types → 400.",
+  })
+  @ApiOkResponse({ type: SourceResponseDto })
+  upload(@Body() dto: UploadDocDto): Promise<KnowledgeSource> {
+    return this.knowledge.addDocumentSource(dto);
   }
 
   @Get()

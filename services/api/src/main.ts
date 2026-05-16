@@ -15,6 +15,10 @@ async function bootstrap() {
       // Trust X-Forwarded-* headers — Fly.io's proxy sets them and we want
       // request.ip to be the real client IP, not the proxy.
       trustProxy: true,
+      // Document uploads come as base64 in JSON (no @fastify/multipart
+      // plumbing). base64 inflates ~33%, so 20MB covers ~15MB files —
+      // ample for SMB brochures / price lists.
+      bodyLimit: 20 * 1024 * 1024,
     }),
   );
 

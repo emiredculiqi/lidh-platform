@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { PrismaModule } from "./common/prisma/prisma.module";
 import { EmbeddingModule } from "./common/embedding/embedding.module";
+import { StorageModule } from "./common/storage/storage.module";
 import { TenantContextModule } from "./common/tenant-context/tenant-context.module";
 import { HealthModule } from "./health/health.module";
 import { ChatModule } from "./chat/chat.module";
@@ -22,6 +23,7 @@ import { WhatsappModule } from "./channels/whatsapp/whatsapp.module";
     }),
     PrismaModule,
     EmbeddingModule,
+    StorageModule,
     TenantContextModule,
     HealthModule,
     ChatModule,
