@@ -118,6 +118,13 @@ export const api = {
     get<KnowledgeSource[]>(`/knowledge/sources?tenantSlug=${slug}`),
   addKnowledge: (body: unknown) =>
     post<KnowledgeSource>("/knowledge/sources", body),
+  addText: (body: { tenantSlug: string; title?: string; content: string }) =>
+    post<KnowledgeSource>("/knowledge/sources/text", body),
+  uploadDoc: (body: {
+    tenantSlug: string;
+    filename: string;
+    contentBase64: string;
+  }) => post<KnowledgeSource>("/knowledge/sources/upload", body),
   listConversations: (slug: string) =>
     get<ConversationListItem[]>(`/conversations?tenantSlug=${slug}`),
   getThread: (id: string) => get<Thread>(`/conversations/${id}`),
