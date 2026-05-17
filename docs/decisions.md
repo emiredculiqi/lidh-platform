@@ -292,3 +292,51 @@ processed, and Playwright for the headless cases.
   MinIO dev).
 
 ---
+
+## ADR-006 — Close the auth gap: Clerk-verified API + BFF proxy (#2)
+
+**Status:** Accepted · 2026-05-17 — supersedes ADR-003's temporary gap.
+**Context:** API endpoints were open (ADR-003). Dashboard has Clerk login but
+calls the API with no auth. The `User` table is empty (M1 Clerk webhook is a
+503 stub). Need real auth without blocking on the webhook + ngrok.
+
+- **Technical term:** *global auth guard verifying Clerk JWTs + JIT user
+  provisioning + a Next BFF (backend-for-frontend) proxy*.
+- **Plain:** The staff door gets its lock. Dashboard requests carry a Clerk
+  pass; the API checks it. First time it sees a valid person with no file, it
+  creates their file from Clerk (no webhook needed). A small reception desk
+  in the dashboard stamps the pass onto every request so we don't wire auth
+  into a dozen call sites.
+- **Chosen:**
+  - **API:** `@clerk/backend` `verifyToken(CLERK_SECRET_KEY)`. A global
+    `APP_GUARD`; routes opt OUT with `@Public()`. Public = health,
+    `POST /v1/chat/web` (anonymous visitors/widget), `GET /v1/demo/:token`,
+    WhatsApp webhook (+verify). Everything else requires a valid Clerk user.
+  - **JIT provisioning:** on a verified request, if no `User` for `sub`
+    (clerkId), fetch the profile via Clerk backend `users.getUser` and
+    upsert. The webhook stays a deferred optimization (freshness/deletes).
+  - **Platform admin:** env `PLATFORM_ADMIN_EMAILS` (comma list). User's
+    email in it → `isPlatformAdmin=true` (also honors Clerk
+    publicMetadata.role==="platform_admin" if present). M2.4 reality =
+    every non-public endpoint is founder/admin, so the guard requires
+    `isPlatformAdmin` for non-public routes. Relaxed to Membership/role
+    checks when the team flow lands (documented, not now).
+  - **Guard ↔ context:** guard verifies + JIT, attaches `req.auth`; the
+    existing TenantContextInterceptor (owns the ALS scope) seeds
+    TenantContext from `req.auth` (replacing the dev x-tenant/x-user
+    headers).
+  - **Dashboard BFF proxy:** `app/api/proxy/[...path]` route handler does
+    Clerk `auth().getToken()` server-side and forwards to the API with the
+    Bearer header. `api.*` (tenants/knowledge/agents/conversations/leads)
+    point at the proxy (one token code path, no client/server split, no
+    CORS). Public chat SSE (TestChat/DemoChat) still hits the API directly
+    (it's @Public + streaming).
+- **Why:** JIT removes the webhook+ngrok prerequisite. The BFF proxy solves
+  the "client components can't read a server-only Clerk token" problem and
+  CORS in one move — standard Next pattern. Email-allowlist admin needs zero
+  Clerk metadata plumbing for the founder.
+- **Honest scope:** non-admin authenticated users get 403 on admin endpoints
+  until the Membership/team flow exists — intentional for M2.4. Webhook
+  user-sync still deferred (JIT covers create; deletes/edits later).
+
+---
