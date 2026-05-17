@@ -1,11 +1,14 @@
-// Thin client for @lidh/api. Server components call these (server→server, no
-// CORS). The API is currently open (ADR-003); the Clerk-gated auth step will
-// add an Authorization header here. NEXT_PUBLIC_API_URL works server-side too.
+// Authenticated dashboard data calls go through the BFF proxy (ADR-006):
+// the proxy attaches the Clerk token server-side and forwards to the API.
+// Same-origin absolute URL → works in both server and client components.
+// `apiBase` (direct API URL) is exported separately for the PUBLIC chat SSE
+// (TestChat/DemoChat) which must NOT be proxied.
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3001";
+const PROXY = `${APP_URL}/api/proxy`;
 
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}/v1${path}`, { cache: "no-store" });
+  const res = await fetch(`${PROXY}${path}`, { cache: "no-store" });
   if (!res.ok) {
     throw new Error(`API ${path} → ${res.status}`);
   }
@@ -13,7 +16,7 @@ async function get<T>(path: string): Promise<T> {
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}/v1${path}`, {
+  const res = await fetch(`${PROXY}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -27,7 +30,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function put<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}/v1${path}`, {
+  const res = await fetch(`${PROXY}${path}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -40,7 +43,10 @@ async function put<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export const apiBase = BASE;
+// Direct API origin — ONLY for the public, streaming chat endpoint
+// (/v1/chat/web) used by TestChat/DemoChat. Not proxied (it's @Public + SSE).
+export const apiBase =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export type Tenant = {
   id: string;

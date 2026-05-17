@@ -8,10 +8,12 @@ import {
   Query,
 } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { Public } from "../../common/auth/public.decorator";
 import { WhatsappService } from "./whatsapp.service";
 import { InboundWebhookDto } from "./dto/inbound-webhook.dto";
 
 @ApiTags("WhatsApp")
+@Public() // both routes are provider webhooks — no Clerk user
 @Controller("webhooks/whatsapp")
 export class WhatsappController {
   private readonly logger = new Logger(WhatsappController.name);

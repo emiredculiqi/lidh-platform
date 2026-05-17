@@ -5,6 +5,7 @@ import {
   ApiOperation,
   ApiTags,
 } from "@nestjs/swagger";
+import { Public } from "../common/auth/public.decorator";
 import { TenantsService } from "./tenants.service";
 import { CreateTenantDto } from "./dto/create-tenant.dto";
 import {
@@ -69,6 +70,7 @@ export class TenantsController {
     return this.tenants.graduate(id);
   }
 
+  @Public()
   @Get("demo/:token")
   @ApiOperation({
     summary: "Resolve a demo link (public)",

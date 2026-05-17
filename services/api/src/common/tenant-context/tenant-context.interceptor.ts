@@ -40,24 +40,24 @@ export class TenantContextInterceptor implements NestInterceptor {
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const req = context.switchToHttp().getRequest<{
-      headers: Record<string, string | string[] | undefined>;
+      auth?: {
+        userId: string;
+        email: string;
+        isPlatformAdmin: boolean;
+      };
     }>();
 
-    // Dev-only debug headers — DO NOT trust these once Clerk is wired.
-    const tenantHeader = req.headers["x-tenant-id"];
-    const userHeader = req.headers["x-user-id"];
-
-    const tenantId = Array.isArray(tenantHeader) ? tenantHeader[0] : tenantHeader;
-    const userId = Array.isArray(userHeader) ? userHeader[0] : userHeader;
-
+    // Seed from req.auth, set by the global AuthGuard after verifying the
+    // Clerk token + JIT-provisioning the User (ADR-006). Public routes have
+    // no req.auth → empty context (anonymous visitor / webhook).
     const ctx: TenantContext = {
-      tenantId: tenantId || undefined,
-      userId: userId || undefined,
+      userId: req.auth?.userId,
+      isPlatformAdmin: req.auth?.isPlatformAdmin,
     };
 
-    if (ctx.tenantId || ctx.userId) {
+    if (ctx.userId) {
       this.logger.debug(
-        `[dev] resolved tenantId=${ctx.tenantId ?? "-"} userId=${ctx.userId ?? "-"}`,
+        `auth: userId=${ctx.userId} admin=${ctx.isPlatformAdmin ?? false}`,
       );
     }
 

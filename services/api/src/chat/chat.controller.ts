@@ -1,6 +1,7 @@
 import { Body, Controller, Post, Req, Res } from "@nestjs/common";
 import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { Public } from "../common/auth/public.decorator";
 import { ChatService } from "./chat.service";
 import { ChatWebRequestDto } from "./dto/chat-web-request.dto";
 
@@ -21,6 +22,7 @@ export class ChatController {
    *
    * @Res() opts out of Nest's auto-response so we own the FastifyReply.
    */
+  @Public()
   @Post("web")
   @ApiOperation({
     summary: "Web-channel chat (SSE stream)",

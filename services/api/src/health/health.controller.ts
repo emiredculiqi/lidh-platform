@@ -6,6 +6,7 @@ import {
   ApiTags,
 } from "@nestjs/swagger";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { Public } from "../common/auth/public.decorator";
 import { HealthResponseDto } from "./dto/health-response.dto";
 
 @ApiTags("Health")
@@ -13,6 +14,7 @@ import { HealthResponseDto } from "./dto/health-response.dto";
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 
+  @Public()
   @Get()
   @ApiOperation({
     summary: "Liveness + database probe",

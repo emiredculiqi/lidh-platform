@@ -14,6 +14,7 @@ const isProtectedRoute = createRouteMatcher([
   "/test(.*)",
   "/settings(.*)",
   "/tenants(.*)",
+  "/api/proxy(.*)", // BFF — only logged-in users may forward to the API
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
