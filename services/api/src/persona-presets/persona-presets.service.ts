@@ -27,24 +27,36 @@ export class PersonaPresetsService implements OnModuleInit {
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit(): Promise<void> {
-    const db = this.prisma.client;
-    let seeded = 0;
-    for (const p of PERSONA_PRESETS) {
-      const res = await db.personaPreset.upsert({
-        where: { id: p.id },
-        create: {
-          id: p.id,
-          label: p.label,
-          description: p.description,
-          personas: p.personas,
-          active: true,
-        },
-        update: {}, // exists → leave operator edits untouched
-      });
-      if (res.createdAt.getTime() === res.updatedAt.getTime()) seeded++;
-    }
-    if (seeded > 0) {
-      this.logger.log(`seeded ${seeded} default persona preset(s)`);
+    // Seed is idempotent (CREATE-IF-MISSING). If the DB is unreachable at
+    // boot — common when both Fly and Neon are scale-to-zero and waking from
+    // idle at the same time — we log and continue. The next boot retries; in
+    // the meantime requests that need presets either succeed (rows already
+    // exist from a prior boot) or return 404, which is recoverable. Crashing
+    // the whole API for a transient DB hiccup is worse than missing seed.
+    try {
+      const db = this.prisma.client;
+      let seeded = 0;
+      for (const p of PERSONA_PRESETS) {
+        const res = await db.personaPreset.upsert({
+          where: { id: p.id },
+          create: {
+            id: p.id,
+            label: p.label,
+            description: p.description,
+            personas: p.personas,
+            active: true,
+          },
+          update: {}, // exists → leave operator edits untouched
+        });
+        if (res.createdAt.getTime() === res.updatedAt.getTime()) seeded++;
+      }
+      if (seeded > 0) {
+        this.logger.log(`seeded ${seeded} default persona preset(s)`);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `preset seed skipped — DB unreachable at boot (${(err as Error).message}). Will retry next boot.`,
+      );
     }
   }
 
