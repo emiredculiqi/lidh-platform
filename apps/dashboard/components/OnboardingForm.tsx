@@ -61,7 +61,6 @@ export function OnboardingForm({ presets }: { presets: PersonaPreset[] }) {
         customAlbanianPersona: presetId
           ? undefined
           : customPersona.trim() || undefined,
-        isDemo: false,
       });
       router.push(`/tenants/${t.slug}`);
       router.refresh();

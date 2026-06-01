@@ -2,6 +2,7 @@ import { api } from "@/lib/api-server";
 import { TenantNav } from "@/components/TenantNav";
 import { AddKnowledge } from "@/components/AddKnowledge";
 import { TenantLifecycle } from "@/components/TenantLifecycle";
+import { FunnelPanel } from "@/components/FunnelPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export default async function TenantOverview({
           {tenant.name}
         </h1>
         <p className="text-sm text-brand-ink/55">
-          {tenant.slug} · {tenant.isDemo ? "demo" : "paid"} ·{" "}
+          {tenant.slug} ·{" "}
           <span
             className={
               tenant.status === "archived"
@@ -46,19 +47,7 @@ export default async function TenantOverview({
 
       <TenantNav slug={slug} active="overview" />
 
-      {tenant.demoUrl ? (
-        <section className="rounded-xl border border-accent-orange/30 bg-accent-orange/5 p-4">
-          <p className="text-sm font-medium text-brand-deep">Demo link</p>
-          <code className="mt-1 block break-all text-sm">
-            {tenant.demoUrl}
-          </code>
-          {tenant.demoExpiresAt ? (
-            <p className="mt-1 text-xs text-brand-ink/55">
-              Expires {new Date(tenant.demoExpiresAt).toLocaleString()}
-            </p>
-          ) : null}
-        </section>
-      ) : null}
+      <FunnelPanel tenant={tenant} />
 
       <section className="space-y-3">
         <h2 className="font-display text-lg font-semibold text-brand-deep">

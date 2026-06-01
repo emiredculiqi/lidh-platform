@@ -20,9 +20,14 @@ export type Tenant = {
   slug: string;
   name: string;
   defaultLocale: string;
-  isDemo: boolean;
-  demoUrl: string | null;
-  demoExpiresAt: string | null;
+  // Permanent public funnel page — shape: ${APP_BASE_URL}/b/<slug>
+  funnelUrl: string;
+  // End of free trial (15d on signup). null = trial cleared by a paid plan.
+  trialEndsAt: string | null;
+  // FK to Plan when admin has assigned one (manual, post-payment).
+  planId: string | null;
+  // Computed server-side: status=active AND (trialEndsAt>now OR planId set).
+  isActive: boolean;
   status: "active" | "archived";
   archivedAt: string | null;
   createdAt: string;
@@ -181,7 +186,6 @@ export type OnboardBusinessInput = {
   businessFacts?: string;
   presetId?: string;
   customAlbanianPersona?: string;
-  isDemo?: boolean;
 };
 
 // The API surface, parameterised by transport. Identical method list whether
@@ -233,5 +237,9 @@ export function makeApi(t: Transport) {
       t.post<Tenant>(`/tenants/${id}/reactivate`, {}),
     deleteTenant: (id: string) =>
       t.del<{ id: string; slug: string; deleted: true }>(`/tenants/${id}`),
+    grantPlan: (id: string, planId: string) =>
+      t.post<Tenant>(`/tenants/${id}/grant-plan`, { planId }),
+    extendTrial: (id: string, days: number) =>
+      t.post<Tenant>(`/tenants/${id}/extend-trial`, { days }),
   };
 }

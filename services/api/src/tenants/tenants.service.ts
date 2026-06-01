@@ -1,43 +1,45 @@
 import {
   BadRequestException,
   ConflictException,
-  GoneException,
   Injectable,
   Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { expandPersonas } from "@lidh/core";
-import { randomBytes } from "node:crypto";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { StorageService } from "../common/storage/storage.service";
 import { TenantContextService } from "../common/tenant-context/tenant-context.service";
 import { assertCanAccessTenant } from "../common/auth/access";
 import type { CreateTenantDto } from "./dto/create-tenant.dto";
 import type {
-  DemoResolveResponseDto,
+  FunnelResolveResponseDto,
   TenantResponseDto,
 } from "./dto/tenant-response.dto";
 
 // Read at call-time, NOT module top-level: @nestjs/config loads .env during
-// bootstrap, after this module is imported. A top-level const would capture
-// undefined and always fall back to the prod URL.
-function demoBaseUrl(): string {
+// bootstrap, after this module is imported. A top-level const captures undef.
+function appBaseUrl(): string {
   return (
-    process.env.DEMO_BASE_URL?.replace(/\/$/, "") ?? "https://demo.lidh.al"
+    process.env.APP_BASE_URL?.replace(/\/$/, "") ?? "https://app.lidh.al"
   );
 }
 
+/** Default free-trial window for newly created tenants. */
+const TRIAL_DAYS = 15;
+const TRIAL_MS = TRIAL_DAYS * 86_400_000;
+
 /**
- * Tenant lifecycle + the demo flow.
+ * Tenant lifecycle + the funnel URL flow (ADR-014).
  *
- * A demo is a real Tenant with isDemo=true, an unguessable demoToken, and a
- * required demoExpiresAt — web-only. The DB CHECK constraint
- * `tenant_demo_consistency_check` enforces the (isDemo ⇔ token+expiry)
- * invariant; this service is written to always satisfy it.
+ * Every tenant — self-registered or admin-created — gets a permanent funnel
+ * page at `${APP_BASE_URL}/b/<slug>` from creation. The agent answers on
+ * that page while the tenant is *active*; otherwise the page shows a soft
+ * "currently offline" message. Active = status=active AND
+ * (trialEndsAt > now OR planId is set).
  *
- * NOTE: these are admin endpoints. They are currently UNAUTHENTICATED,
- * consistent with the rest of M2 (Clerk gating is a later M2 step — see
- * ADR-003). Do not expose publicly before that lands.
+ * The earlier "demo URL" concept (demo.lidh.al/<token>, expiring) is gone —
+ * the URL is the SMB's storefront and must be permanent. Trial pressure is
+ * applied via the agent going quiet, not the URL breaking.
  */
 @Injectable()
 export class TenantsService {
@@ -58,7 +60,6 @@ export class TenantsService {
     ownerUserId?: string,
   ): Promise<TenantResponseDto> {
     const db = this.prisma.client;
-    const isDemo = dto.isDemo ?? false;
     const defaultLocale = dto.defaultLocale ?? "al";
 
     // Resolve personas: a standard preset (ADR-010 — resolved from the
@@ -91,10 +92,10 @@ export class TenantsService {
       throw new BadRequestException("provide either presetId or personas");
     }
 
-    const demoToken = isDemo ? randomBytes(24).toString("base64url") : null;
-    const demoExpiresAt = isDemo
-      ? new Date(Date.now() + (dto.demoExpiresInDays ?? 14) * 86_400_000)
-      : null;
+    // Every new tenant starts with a 15-day trial. Admin-created tenants
+    // can be promoted immediately afterwards via /grant-plan; self-serve
+    // tenants live on the trial until they pay.
+    const trialEndsAt = new Date(Date.now() + TRIAL_MS);
 
     try {
       const tenant = await db.$transaction(async (tx) => {
@@ -106,9 +107,7 @@ export class TenantsService {
             settings: dto.businessFacts
               ? { businessFacts: dto.businessFacts }
               : {},
-            isDemo,
-            demoToken,
-            demoExpiresAt,
+            trialEndsAt,
           },
         });
 
@@ -133,8 +132,8 @@ export class TenantsService {
           })),
         });
 
-        // Demos are web-only (schema comment + this guard). Non-demos also
-        // start with a web channel; WA/IG are added later via ChannelsModule.
+        // Every tenant starts with a web channel (the funnel page). WA/IG
+        // are added later via ChannelsModule once the SMB connects them.
         await tx.channel.create({
           data: {
             tenantId: t.id,
@@ -186,15 +185,15 @@ export class TenantsService {
     return this.toTenantResponse(t);
   }
 
-  /** Public: resolve a demo token to the info a demo page needs to boot. */
-  async resolveDemo(token: string): Promise<DemoResolveResponseDto> {
+  /**
+   * Public: what the funnel page at /b/<slug> needs to render. Always
+   * returns tenant info if the slug exists (so we can show a branded
+   * "currently offline" page) — caller decides what to do with isActive.
+   */
+  async getFunnel(slug: string): Promise<FunnelResolveResponseDto> {
     const db = this.prisma.client;
-    const t = await db.tenant.findUnique({ where: { demoToken: token } });
-    if (!t || !t.isDemo) throw new NotFoundException("demo_not_found");
-    if (t.demoExpiresAt && t.demoExpiresAt.getTime() < Date.now()) {
-      throw new GoneException("demo_expired");
-    }
-    if (t.status === "archived") throw new GoneException("demo_inactive");
+    const t = await db.tenant.findUnique({ where: { slug } });
+    if (!t) throw new NotFoundException("tenant_not_found");
 
     const personas = await db.agentPersona.findMany({
       where: { tenantId: t.id },
@@ -202,44 +201,80 @@ export class TenantsService {
       distinct: ["locale"],
     });
 
-    await db.event.create({
-      data: {
-        tenantId: t.id,
-        kind: "demo_link_visited",
-        meta: { token },
-      },
-    });
+    // Fire-and-forget the visit event. If it fails (DB hiccup, foreign key
+    // race) we still want to serve the page.
+    db.event
+      .create({
+        data: { tenantId: t.id, kind: "funnel_visited", meta: { slug } },
+      })
+      .catch((err) =>
+        this.logger.warn(
+          `funnel_visited event failed for ${slug}: ${
+            err instanceof Error ? err.message : "unknown"
+          }`,
+        ),
+      );
 
     return {
       tenantSlug: t.slug,
       name: t.name,
       defaultLocale: t.defaultLocale,
       locales: personas.map((p) => p.locale),
-      expiresAt: t.demoExpiresAt as Date,
+      isActive: isTenantActive(t),
     };
   }
 
-  /** Demo → paid: clears demo flags (satisfies the CHECK: !isDemo ⇒ nulls). */
-  async graduate(id: string): Promise<TenantResponseDto> {
+  /**
+   * Admin: assign a paid plan. Also clears `trialEndsAt` (the tenant is now
+   * paying, the trial is moot). Idempotent: re-assigning the same plan is a
+   * no-op.
+   */
+  async grantPlan(id: string, planId: string): Promise<TenantResponseDto> {
     const db = this.prisma.client;
     const t = await db.tenant.findUnique({ where: { id } });
     if (!t) throw new NotFoundException("tenant_not_found");
-    if (!t.isDemo) {
-      return this.toTenantResponse(t); // idempotent no-op
+    const plan = await db.plan.findUnique({ where: { id: planId } });
+    if (!plan || !plan.isActive) {
+      throw new BadRequestException("plan_not_found_or_inactive");
     }
     const updated = await db.tenant.update({
       where: { id },
-      data: { isDemo: false, demoToken: null, demoExpiresAt: null },
+      data: { planId, trialEndsAt: null },
     });
-    // No EventKind for graduation yet — add `tenant_graduated` in a later
-    // schema migration rather than misuse an unrelated enum value.
+    this.logger.log(`tenant ${t.slug} (${id}) → plan ${plan.slug}`);
+    return this.toTenantResponse(updated);
+  }
+
+  /**
+   * Admin: extend (or set) the trial by N days from *now*. Useful when a
+   * customer needs more time before signing, or to grant a one-off trial
+   * extension after a sales call. Clears planId — a tenant either has a
+   * trial OR a plan, never both.
+   */
+  async extendTrial(
+    id: string,
+    days: number,
+  ): Promise<TenantResponseDto> {
+    if (!Number.isInteger(days) || days < 1 || days > 365) {
+      throw new BadRequestException("days_out_of_range_1_365");
+    }
+    const db = this.prisma.client;
+    const t = await db.tenant.findUnique({ where: { id } });
+    if (!t) throw new NotFoundException("tenant_not_found");
+    const updated = await db.tenant.update({
+      where: { id },
+      data: {
+        trialEndsAt: new Date(Date.now() + days * 86_400_000),
+        planId: null,
+      },
+    });
+    this.logger.log(`tenant ${t.slug} (${id}) trial extended by ${days}d`);
     return this.toTenantResponse(updated);
   }
 
   /**
    * Archive a tenant (pause the subscription). The agent stops serving on
-   * every channel (enforced in chat.runWeb / whatsapp.handleInbound /
-   * resolveDemo); all data is retained and the dashboard stays readable.
+   * every channel; all data is retained and the dashboard stays readable.
    * Idempotent: archiving an archived tenant is a no-op.
    */
   async archive(id: string): Promise<TenantResponseDto> {
@@ -295,9 +330,8 @@ export class TenantsService {
     slug: string;
     name: string;
     defaultLocale: string;
-    isDemo: boolean;
-    demoToken: string | null;
-    demoExpiresAt: Date | null;
+    planId: string | null;
+    trialEndsAt: Date | null;
     status: string;
     archivedAt: Date | null;
     createdAt: Date;
@@ -307,12 +341,37 @@ export class TenantsService {
       slug: t.slug,
       name: t.name,
       defaultLocale: t.defaultLocale,
-      isDemo: t.isDemo,
-      demoUrl: t.demoToken ? `${demoBaseUrl()}/${t.demoToken}` : null,
-      demoExpiresAt: t.demoExpiresAt,
+      funnelUrl: `${appBaseUrl()}/b/${t.slug}`,
+      trialEndsAt: t.trialEndsAt,
+      planId: t.planId,
+      isActive: isTenantActive(t),
       status: t.status,
       archivedAt: t.archivedAt,
       createdAt: t.createdAt,
     };
   }
+}
+
+/**
+ * Single source of truth for "is the funnel/widget allowed to serve?". Used
+ * by getFunnel and (eventually) by the chat runtime to gate replies.
+ *
+ * Active iff:
+ *   - status !== archived (admin hasn't paused), AND
+ *   - (trialEndsAt > now)  OR  (planId is set)
+ *
+ * planId-by-itself means active for now — once subscriptions get real
+ * billing cycles, add a `Tenant.planExpiresAt` check here. Until then, a
+ * planId is treated as a permanent grant (admin manually assigned it after
+ * payment, admin will revoke it if the customer stops paying).
+ */
+export function isTenantActive(t: {
+  status: string;
+  trialEndsAt: Date | null;
+  planId: string | null;
+}): boolean {
+  if (t.status === "archived") return false;
+  if (t.trialEndsAt && t.trialEndsAt.getTime() > Date.now()) return true;
+  if (t.planId) return true;
+  return false;
 }

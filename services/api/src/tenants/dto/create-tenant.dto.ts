@@ -3,13 +3,9 @@ import { Type } from "class-transformer";
 import {
   ArrayMinSize,
   IsArray,
-  IsBoolean,
-  IsInt,
   IsOptional,
   IsString,
   Matches,
-  Max,
-  Min,
   MinLength,
   ValidateNested,
 } from "class-validator";
@@ -90,28 +86,6 @@ export class CreateTenantDto {
   @ValidateNested({ each: true })
   @Type(() => PersonaInputDto)
   personas?: PersonaInputDto[];
-
-  @ApiPropertyOptional({
-    description:
-      "Create as a demo (web-only). Generates an unguessable demo link " +
-      "with a required expiry.",
-    default: false,
-  })
-  @IsOptional()
-  @IsBoolean()
-  isDemo?: boolean;
-
-  @ApiPropertyOptional({
-    description: "Days until the demo link expires (only used when isDemo).",
-    default: 14,
-    minimum: 1,
-    maximum: 180,
-  })
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  @Max(180)
-  demoExpiresInDays?: number;
 
   @ApiPropertyOptional({
     description: "Origins allowed to embed the web widget.",

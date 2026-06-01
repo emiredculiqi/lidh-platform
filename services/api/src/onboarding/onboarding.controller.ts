@@ -117,7 +117,6 @@ export class OnboardingController {
         businessFacts: dto.businessFacts,
         presetId: dto.presetId,
         personas,
-        isDemo: dto.isDemo ?? false,
       },
       userId,
     );

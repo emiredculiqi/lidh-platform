@@ -1,11 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import {
-  IsBoolean,
-  IsOptional,
-  IsString,
-  Matches,
-  MinLength,
-} from "class-validator";
+import { IsOptional, IsString, Matches, MinLength } from "class-validator";
 
 /**
  * Self-serve business onboarding payload (ADR-013). The logged-in Clerk user
@@ -57,14 +51,6 @@ export class OnboardBusinessDto {
   @IsOptional()
   @IsString()
   customAlbanianPersona?: string;
-
-  @ApiPropertyOptional({
-    description: "Create as a demo (web-only) — defaults to false.",
-    default: false,
-  })
-  @IsOptional()
-  @IsBoolean()
-  isDemo?: boolean;
 }
 
 /** Shape of GET /v1/me — what the dashboard reads on first paint. */

@@ -84,7 +84,7 @@ enum EventKind {
   channel_disconnected
   knowledge_source_indexed
   knowledge_source_failed
-  demo_link_visited
+  funnel_visited
 }
 
 // Tag on Conversation. Lets us reuse the same agent runtime + tables for
@@ -176,19 +176,18 @@ model Tenant {
   defaultLocale String @default("al")
   settings      Json   @default("{}")
 
-  // ─── Demo lifecycle ─────────────────────────────────────────────────────
-  // A demo is a real tenant in every other respect — same agent runtime,
-  // same knowledge ingestion, same conversation tracking. Graduating a demo
-  // to a paid customer = set isDemo=false, clear demoToken/demoExpiresAt.
-  // Invariant (enforced at app layer + by a CHECK constraint added in 2.5):
-  //   isDemo=true  => demoToken IS NOT NULL AND demoExpiresAt IS NOT NULL
-  //   isDemo=false => demoToken IS NULL     AND demoExpiresAt IS NULL
-  // Demos are web-only (validated at app layer when creating Channel rows
-  // for a demo tenant). WhatsApp/Instagram are not available for demos.
-  isDemo        Boolean   @default(false)
-  // Opaque random URL token: demo.lidh.al/{demoToken}. Unguessable by design.
-  demoToken     String?   @unique
-  demoExpiresAt DateTime?
+  // ─── Funnel lifecycle (ADR-014) ─────────────────────────────────────────
+  // Every tenant gets a permanent funnel page at app.lidh.al/b/<slug> from
+  // day one. There's no separate "demo URL" anymore — the URL is the
+  // tenant's storefront. Whether the funnel is *live* is decided by
+  // `isTenantActive`:
+  //   - trialEndsAt > now           → active (trial)
+  //   - planId set + plan not lapsed → active (paid)
+  //   - else                         → /b/<slug> shows "currently offline"
+  //
+  // Replaces the earlier `isDemo` + `demoToken` + `demoExpiresAt` design.
+  // For Albanian SMBs without their own website, the funnel URL is too
+  // valuable to expire mid-funnel — gate the *service*, not the *URL*.
 
   // ─── Service lifecycle (ADR-008) ────────────────────────────────────────
   // active → archived (subscription paused; agent stops serving, data kept,
@@ -214,7 +213,6 @@ model Tenant {
   events           Event[]
   usageDaily       UsageDaily[]
 
-  @@index([isDemo])
   @@index([planId])
 }
 
@@ -335,8 +333,6 @@ model Channel {
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   conversations Conversation[]
 
-  // App-layer rule: when Tenant.isDemo = true, only kind = web is allowed.
-  // Enforced when creating Channel rows for demo tenants.
   @@unique([tenantId, kind]) // one of each kind per tenant; relax later if needed
 }
 

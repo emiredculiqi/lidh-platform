@@ -50,9 +50,7 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
   const [presetId, setPresetId] = useState(presets[0]?.id ?? "");
   const [persona, setPersona] = useState("");
 
-  // ── demo / widget ──
-  const [isDemo, setIsDemo] = useState(true);
-  const [demoDays, setDemoDays] = useState(14);
+  // ── widget origins (web channel allowed origins) ──
   const [origins, setOrigins] = useState("");
 
   // ── knowledge queue ──
@@ -143,8 +141,6 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
         defaultLocale,
         agentName: agentName.trim() || undefined,
         businessFacts: businessFacts.trim() || undefined,
-        isDemo,
-        demoExpiresInDays: isDemo ? demoDays : undefined,
         webAllowedOrigins: origins
           .split(",")
           .map((o) => o.trim())
@@ -334,35 +330,17 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
         )}
       </section>
 
-      {/* Demo / widget */}
+      {/* Widget origins */}
       <section className={card}>
-        <h2 className={heading}>Demo &amp; widget</h2>
-        <label className="flex items-center gap-2 text-sm text-brand-ink/80">
-          <input
-            type="checkbox"
-            checked={isDemo}
-            onChange={(e) => setIsDemo(e.target.checked)}
-          />
-          Create as a demo (generates an expiring demo link)
-        </label>
-        {isDemo ? (
-          <label className="space-y-1">
-            <span className="text-xs text-brand-ink/60">
-              Demo expires after (days)
-            </span>
-            <input
-              type="number"
-              min={1}
-              max={180}
-              value={demoDays}
-              onChange={(e) => setDemoDays(Number(e.target.value))}
-              className={`${input} w-32`}
-            />
-          </label>
-        ) : null}
+        <h2 className={heading}>Widget</h2>
+        <p className="text-sm text-brand-ink/55">
+          The funnel page at <code>app.lidh.al/b/{slug || "&lt;slug&gt;"}</code>{" "}
+          is created automatically. Every new tenant starts on a 15-day trial.
+        </p>
         <label className="space-y-1">
           <span className="text-xs text-brand-ink/60">
-            Allowed widget origins (optional, comma-separated)
+            Allowed widget origins (optional, comma-separated) — only needed
+            if the SMB also embeds the chat on their own website.
           </span>
           <input
             value={origins}

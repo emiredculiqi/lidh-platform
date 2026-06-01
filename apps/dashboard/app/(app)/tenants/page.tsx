@@ -1,7 +1,44 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { api } from "@/lib/api-server";
+import type { Tenant } from "@/lib/api-core";
 import { TenantDeleteButton } from "@/components/TenantDeleteButton";
+
+/** One-glance lifecycle badge. Order matters: archived wins over plan/trial. */
+function PlanBadge({ tenant }: { tenant: Tenant }) {
+  if (tenant.status === "archived") {
+    return (
+      <span className="rounded bg-brand-ink/10 px-2 py-0.5 text-xs font-medium text-brand-ink/60">
+        archived
+      </span>
+    );
+  }
+  if (tenant.planId) {
+    return (
+      <span className="rounded bg-brand-mint/20 px-2 py-0.5 text-xs font-medium text-brand-deep">
+        paid
+      </span>
+    );
+  }
+  if (tenant.trialEndsAt && new Date(tenant.trialEndsAt) > new Date()) {
+    const days = Math.max(
+      0,
+      Math.ceil(
+        (new Date(tenant.trialEndsAt).getTime() - Date.now()) / 86_400_000,
+      ),
+    );
+    return (
+      <span className="rounded bg-accent-orange/15 px-2 py-0.5 text-xs font-medium text-accent-orange">
+        trial · {days}d
+      </span>
+    );
+  }
+  return (
+    <span className="rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+      inactive
+    </span>
+  );
+}
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +87,8 @@ export default async function TenantsPage() {
 
       {tenants.length === 0 ? (
         <p className="text-brand-ink/60">
-          No tenants yet. Create one to generate a demo link.
+          No tenants yet. Create one and its funnel URL is generated
+          automatically.
         </p>
       ) : (
         <div className="overflow-hidden rounded-xl border border-brand-ink/10 bg-white">
@@ -59,8 +97,8 @@ export default async function TenantsPage() {
               <tr>
                 <th className="px-4 py-2 font-medium">Name</th>
                 <th className="px-4 py-2 font-medium">Slug</th>
-                <th className="px-4 py-2 font-medium">Type</th>
-                <th className="px-4 py-2 font-medium">Demo link</th>
+                <th className="px-4 py-2 font-medium">Plan</th>
+                <th className="px-4 py-2 font-medium">Funnel URL</th>
                 <th className="px-4 py-2 font-medium text-right">Actions</th>
               </tr>
             </thead>
@@ -80,29 +118,10 @@ export default async function TenantsPage() {
                   </td>
                   <td className="px-4 py-2 text-brand-ink/70">{t.slug}</td>
                   <td className="px-4 py-2">
-                    <span className="inline-flex items-center gap-1.5">
-                      {t.isDemo ? (
-                        <span className="rounded bg-accent-orange/15 px-2 py-0.5 text-xs font-medium text-accent-orange">
-                          demo
-                        </span>
-                      ) : (
-                        <span className="rounded bg-brand-mint/20 px-2 py-0.5 text-xs font-medium text-brand-deep">
-                          paid
-                        </span>
-                      )}
-                      {t.status === "archived" ? (
-                        <span className="rounded bg-brand-ink/10 px-2 py-0.5 text-xs font-medium text-brand-ink/60">
-                          archived
-                        </span>
-                      ) : null}
-                    </span>
+                    <PlanBadge tenant={t} />
                   </td>
                   <td className="px-4 py-2 text-brand-ink/60">
-                    {t.demoUrl ? (
-                      <code className="break-all text-xs">{t.demoUrl}</code>
-                    ) : (
-                      "—"
-                    )}
+                    <code className="break-all text-xs">{t.funnelUrl}</code>
                   </td>
                   <td className="px-4 py-2 text-right">
                     <TenantDeleteButton id={t.id} name={t.name} />

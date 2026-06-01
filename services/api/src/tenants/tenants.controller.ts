@@ -1,18 +1,48 @@
-import { Body, Controller, Delete, Get, Param, Post } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+} from "@nestjs/common";
 import {
   ApiCreatedResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
 } from "@nestjs/swagger";
+import { IsInt, IsString, Max, Min, MinLength } from "class-validator";
+import { ApiProperty } from "@nestjs/swagger";
 import { Public } from "../common/auth/public.decorator";
 import { PlatformAdminOnly } from "../common/auth/platform-admin.decorator";
 import { TenantsService } from "./tenants.service";
 import { CreateTenantDto } from "./dto/create-tenant.dto";
 import {
-  DemoResolveResponseDto,
+  FunnelResolveResponseDto,
   TenantResponseDto,
 } from "./dto/tenant-response.dto";
+
+class GrantPlanDto {
+  @ApiProperty({
+    description: "FK to Plan.id. The plan must exist and be active.",
+  })
+  @IsString()
+  @MinLength(1)
+  planId!: string;
+}
+
+class ExtendTrialDto {
+  @ApiProperty({
+    description: "Days from *now*. Resets the trial window.",
+    minimum: 1,
+    maximum: 365,
+  })
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  days!: number;
+}
 
 @ApiTags("Tenants")
 @Controller()
@@ -24,16 +54,11 @@ export class TenantsController {
   @ApiOperation({
     summary: "Create a tenant (+ agent, personas, web channel)",
     description:
-      "**How to consume:** `POST /v1/tenants`. Creates the full tenant in " +
-      "one transaction: tenant + agent + one persona per language + a web " +
-      "channel. Set `isDemo:true` to get an unguessable, expiring demo link " +
-      "back in `demoUrl` — hand that to a prospect.\n\n" +
-      "_Admin endpoint — unauthenticated in M2 (see ADR-003); Clerk gating " +
-      "lands later._\n\n" +
-      "```bash\ncurl -X POST http://localhost:4000/v1/tenants \\\n" +
-      '  -H "Content-Type: application/json" \\\n' +
-      '  -d \'{"name":"Bar Roma","slug":"bar-roma","isDemo":true,' +
-      '"personas":[{"locale":"al","content":"Ti je asistenti i Bar Roma…"}]}\'\n```',
+      "Creates the full tenant in one transaction: tenant + agent + one " +
+      "persona per language + a web channel. Every tenant starts with a " +
+      "15-day trial (`trialEndsAt = now + 15d`) and gets a permanent " +
+      "funnel page at `funnelUrl`. To promote the tenant to paid, hit " +
+      "`/grant-plan` later.",
   })
   @ApiCreatedResponse({ type: TenantResponseDto })
   create(@Body() dto: CreateTenantDto): Promise<TenantResponseDto> {
@@ -44,15 +69,12 @@ export class TenantsController {
   @PlatformAdminOnly()
   @ApiOperation({
     summary: "List all tenants (platform-admin)",
-    description:
-      "Every tenant, newest first. Demos include their demoUrl. Backs the " +
-      "dashboard tenants list. _Admin endpoint — see ADR-003._",
+    description: "Every tenant, newest first. Backs the dashboard tenants list.",
   })
   @ApiOkResponse({ type: TenantResponseDto, isArray: true })
   list(): Promise<TenantResponseDto[]> {
     return this.tenants.listTenants();
   }
-
 
   @Get("tenants/:slug")
   @ApiOperation({ summary: "Get a tenant by slug" })
@@ -61,18 +83,37 @@ export class TenantsController {
     return this.tenants.getTenant(slug);
   }
 
-  @Post("tenants/:id/graduate")
+  @Post("tenants/:id/grant-plan")
   @PlatformAdminOnly()
   @ApiOperation({
-    summary: "Graduate a demo → paid tenant",
+    summary: "Assign a paid plan (trial → paid)",
     description:
-      "Clears the demo flags (isDemo=false, demoToken/expiry nulled). " +
-      "Idempotent for already-paid tenants. Conversations/leads/knowledge " +
-      "are preserved — same tenant, just no longer a demo.",
+      "After the SMB pays (bank transfer / cash — no Stripe yet), admin " +
+      "assigns the plan. Clears `trialEndsAt` (a tenant has a trial OR a " +
+      "plan, never both). Idempotent.",
   })
   @ApiOkResponse({ type: TenantResponseDto })
-  graduate(@Param("id") id: string): Promise<TenantResponseDto> {
-    return this.tenants.graduate(id);
+  grantPlan(
+    @Param("id") id: string,
+    @Body() dto: GrantPlanDto,
+  ): Promise<TenantResponseDto> {
+    return this.tenants.grantPlan(id, dto.planId);
+  }
+
+  @Post("tenants/:id/extend-trial")
+  @PlatformAdminOnly()
+  @ApiOperation({
+    summary: "Extend (or set) the trial by N days from now",
+    description:
+      "Used by admin when a customer needs more time before signing. " +
+      "Clears `planId` (trial and plan are mutually exclusive).",
+  })
+  @ApiOkResponse({ type: TenantResponseDto })
+  extendTrial(
+    @Param("id") id: string,
+    @Body() dto: ExtendTrialDto,
+  ): Promise<TenantResponseDto> {
+    return this.tenants.extendTrial(id, dto.days);
   }
 
   @Post("tenants/:id/archive")
@@ -80,15 +121,10 @@ export class TenantsController {
   @ApiOperation({
     summary: "Archive a tenant (pause the subscription)",
     description:
-      "**How to consume:** `POST /v1/tenants/{id}/archive`. Stops the agent " +
-      "from serving end-customers on *every* channel (web widget, demo link, " +
-      "WhatsApp) — they get a polite 'unavailable' instead of a reply. " +
-      "**No data is deleted**: conversations, leads and knowledge are " +
-      "retained, and the dashboard stays fully readable so you can review or " +
-      "export. Fully reversible with `/reactivate`. Idempotent — archiving " +
-      "an already-archived tenant is a no-op.\n\n" +
-      "Use this when a customer stops paying but you may resume them, or " +
-      "before deleting so service halts immediately while you decide.",
+      "Stops the agent from serving end-customers on *every* channel " +
+      "(web widget, funnel page, WhatsApp). No data is deleted; the " +
+      "dashboard stays readable so admin can review/export. Fully " +
+      "reversible with `/reactivate`. Idempotent.",
   })
   @ApiOkResponse({ type: TenantResponseDto })
   archive(@Param("id") id: string): Promise<TenantResponseDto> {
@@ -100,8 +136,7 @@ export class TenantsController {
   @ApiOperation({
     summary: "Reactivate an archived tenant",
     description:
-      "Reverse of `/archive`: `status` → active, the agent serves again on " +
-      "all channels immediately. Idempotent for already-active tenants.",
+      "Reverse of `/archive`: `status` → active. Idempotent.",
   })
   @ApiOkResponse({ type: TenantResponseDto })
   reactivate(@Param("id") id: string): Promise<TenantResponseDto> {
@@ -113,13 +148,9 @@ export class TenantsController {
   @ApiOperation({
     summary: "Delete a tenant — IRREVERSIBLE, purges everything",
     description:
-      "**How to consume:** `DELETE /v1/tenants/{id}`. Permanently removes the " +
-      "tenant and **every** related row — agent, personas, channels, " +
-      "knowledge sources + chunks, contacts, conversations, messages, leads, " +
-      "events, usage, memberships (DB `onDelete: Cascade`) — plus the " +
-      "tenant's original uploaded documents in object storage (best-effort). " +
-      "**There is no undo.** Prefer `/archive` if you might restore the " +
-      "customer. UI requires typing the slug to confirm.",
+      "Permanently removes the tenant and **every** related row (DB " +
+      "`onDelete: Cascade`) plus stored documents (best-effort). " +
+      "**There is no undo.** Prefer `/archive` if you might restore.",
   })
   @ApiOkResponse({
     schema: {
@@ -133,19 +164,20 @@ export class TenantsController {
   }
 
   @Public()
-  @Get("demo/:token")
+  @Get("funnel/:slug")
   @ApiOperation({
-    summary: "Resolve a demo link (public)",
+    summary: "Resolve a tenant's funnel page (public)",
     description:
-      "**Public.** The demo page calls this with the token from " +
-      "`demo.lidh.al/{token}`. Returns the tenantSlug to use with " +
-      "`POST /v1/chat/web`, plus name/locales. 404 if unknown, 410 if " +
-      "expired. Records a `demo_link_visited` event.",
+      "**Public.** The funnel page at `app.lidh.al/b/:slug` calls this to " +
+      "render. Returns tenant name + locales + `isActive`. When `isActive` " +
+      "is false (trial expired, no plan, or archived), the page shows the " +
+      "soft 'currently offline' message instead of booting the chat. " +
+      "Records a `funnel_visited` event.",
   })
-  @ApiOkResponse({ type: DemoResolveResponseDto })
-  resolveDemo(
-    @Param("token") token: string,
-  ): Promise<DemoResolveResponseDto> {
-    return this.tenants.resolveDemo(token);
+  @ApiOkResponse({ type: FunnelResolveResponseDto })
+  resolveFunnel(
+    @Param("slug") slug: string,
+  ): Promise<FunnelResolveResponseDto> {
+    return this.tenants.getFunnel(slug);
   }
 }

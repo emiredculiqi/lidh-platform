@@ -13,24 +13,43 @@ export class TenantResponseDto {
   @ApiProperty({ example: "al" })
   defaultLocale!: string;
 
-  @ApiProperty({ example: false })
-  isDemo!: boolean;
+  @ApiProperty({
+    description:
+      "Permanent public funnel page for this tenant. Same URL for the " +
+      "whole lifecycle — the *service* (the agent answering) is what gates, " +
+      "not the URL. Shows a soft 'currently offline' message if `isActive=false`.",
+    example: "https://app.lidh.al/b/bar-roma",
+  })
+  funnelUrl!: string;
 
   @ApiProperty({
-    description: "Demo link (only when isDemo). Send this to the prospect.",
-    example: "https://demo.lidh.al/Xa9k…",
+    description:
+      "End of the free trial period. null = trial cleared (paid plan " +
+      "assigned, or admin explicitly cleared). When set and in the future, " +
+      "tenant is active during the trial regardless of `planId`.",
+    example: "2026-06-15T00:00:00.000Z",
     nullable: true,
     type: String,
   })
-  demoUrl!: string | null;
+  trialEndsAt!: Date | null;
 
   @ApiProperty({
-    description: "When the demo link stops working (only when isDemo).",
-    example: "2026-05-30T00:00:00.000Z",
+    description:
+      "FK to Plan. null = no paid plan assigned (tenant relies on trial or " +
+      "is inactive). Set by admin via /grant-plan after payment.",
+    example: null,
     nullable: true,
     type: String,
   })
-  demoExpiresAt!: Date | null;
+  planId!: string | null;
+
+  @ApiProperty({
+    description:
+      "True if the tenant's agent is currently allowed to serve customers. " +
+      "Computed: status=active AND (trialEndsAt in future OR planId set).",
+    example: true,
+  })
+  isActive!: boolean;
 
   @ApiProperty({
     description:
@@ -53,7 +72,13 @@ export class TenantResponseDto {
   createdAt!: Date;
 }
 
-export class DemoResolveResponseDto {
+/**
+ * Shape returned by GET /v1/funnel/:slug — what the public funnel page needs
+ * to render. No auth required. Includes `isActive` so the page can either
+ * boot the chat (active) or show the soft "currently offline" message
+ * (inactive — trial expired, no plan, or archived).
+ */
+export class FunnelResolveResponseDto {
   @ApiProperty({
     description: "Slug to pass to POST /v1/chat/web as tenantSlug.",
     example: "bar-roma",
@@ -73,6 +98,12 @@ export class DemoResolveResponseDto {
   })
   locales!: string[];
 
-  @ApiProperty({ example: "2026-05-30T00:00:00.000Z" })
-  expiresAt!: Date;
+  @ApiProperty({
+    description:
+      "If false, the funnel page should show 'currently offline' instead of " +
+      "booting the chat. Causes: trial expired without a plan, plan lapsed, " +
+      "or tenant archived.",
+    example: true,
+  })
+  isActive!: boolean;
 }
