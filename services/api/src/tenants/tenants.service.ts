@@ -29,6 +29,35 @@ const TRIAL_DAYS = 15;
 const TRIAL_MS = TRIAL_DAYS * 86_400_000;
 
 /**
+ * Owner-membership include shared by every Tenant read that surfaces
+ * `ownerEmail` to the dashboard. Takes the OLDEST owner membership (stable
+ * across re-assignments) and only its user's email. `take: 1` keeps the
+ * read cheap on tenants that ever grow multiple owners.
+ */
+const OWNER_INCLUDE = {
+  memberships: {
+    where: { role: "owner" as const },
+    orderBy: { createdAt: "asc" as const },
+    take: 1,
+    include: { user: { select: { email: true } } },
+  },
+};
+
+type TenantWithOwner = {
+  id: string;
+  slug: string;
+  name: string;
+  defaultLocale: string;
+  planId: string | null;
+  trialEndsAt: Date | null;
+  pendingOwnerEmail: string | null;
+  status: string;
+  archivedAt: Date | null;
+  createdAt: Date;
+  memberships: Array<{ user: { email: string } }>;
+};
+
+/**
  * Tenant lifecycle + the funnel URL flow (ADR-014).
  *
  * Every tenant — self-registered or admin-created — gets a permanent funnel
@@ -166,7 +195,13 @@ export class TenantsService {
         return t;
       });
 
-      return this.toTenantResponse(tenant);
+      // Re-fetch with the owner include so the response reflects the
+      // membership created above (if any).
+      const fresh = await db.tenant.findUnique({
+        where: { id: tenant.id },
+        include: OWNER_INCLUDE,
+      });
+      return this.toTenantResponse(fresh!);
     } catch (err: unknown) {
       if (
         err &&
@@ -186,12 +221,16 @@ export class TenantsService {
   async listTenants(): Promise<TenantResponseDto[]> {
     const rows = await this.prisma.client.tenant.findMany({
       orderBy: { createdAt: "desc" },
+      include: OWNER_INCLUDE,
     });
     return rows.map((t) => this.toTenantResponse(t));
   }
 
   async getTenant(slug: string): Promise<TenantResponseDto> {
-    const t = await this.prisma.client.tenant.findUnique({ where: { slug } });
+    const t = await this.prisma.client.tenant.findUnique({
+      where: { slug },
+      include: OWNER_INCLUDE,
+    });
     if (!t) throw new NotFoundException("tenant_not_found");
     assertCanAccessTenant(this.ctx.get(), t.id);
     return this.toTenantResponse(t);
@@ -252,6 +291,7 @@ export class TenantsService {
     const updated = await db.tenant.update({
       where: { id },
       data: { planId, trialEndsAt: null },
+      include: OWNER_INCLUDE,
     });
     this.logger.log(`tenant ${t.slug} (${id}) → plan ${plan.slug}`);
     return this.toTenantResponse(updated);
@@ -279,6 +319,7 @@ export class TenantsService {
         trialEndsAt: new Date(Date.now() + days * 86_400_000),
         planId: null,
       },
+      include: OWNER_INCLUDE,
     });
     this.logger.log(`tenant ${t.slug} (${id}) trial extended by ${days}d`);
     return this.toTenantResponse(updated);
@@ -326,7 +367,10 @@ export class TenantsService {
       );
     }
 
-    const updated = await db.tenant.findUnique({ where: { id } });
+    const updated = await db.tenant.findUnique({
+      where: { id },
+      include: OWNER_INCLUDE,
+    });
     return this.toTenantResponse(updated!);
   }
 
@@ -356,12 +400,16 @@ export class TenantsService {
    */
   async archive(id: string): Promise<TenantResponseDto> {
     const db = this.prisma.client;
-    const t = await db.tenant.findUnique({ where: { id } });
+    const t = await db.tenant.findUnique({
+      where: { id },
+      include: OWNER_INCLUDE,
+    });
     if (!t) throw new NotFoundException("tenant_not_found");
     if (t.status === "archived") return this.toTenantResponse(t);
     const updated = await db.tenant.update({
       where: { id },
       data: { status: "archived", archivedAt: new Date() },
+      include: OWNER_INCLUDE,
     });
     this.logger.log(`tenant ${t.slug} (${id}) archived`);
     return this.toTenantResponse(updated);
@@ -370,12 +418,16 @@ export class TenantsService {
   /** Reactivate an archived tenant — the agent serves again. Idempotent. */
   async reactivate(id: string): Promise<TenantResponseDto> {
     const db = this.prisma.client;
-    const t = await db.tenant.findUnique({ where: { id } });
+    const t = await db.tenant.findUnique({
+      where: { id },
+      include: OWNER_INCLUDE,
+    });
     if (!t) throw new NotFoundException("tenant_not_found");
     if (t.status === "active") return this.toTenantResponse(t);
     const updated = await db.tenant.update({
       where: { id },
       data: { status: "active", archivedAt: null },
+      include: OWNER_INCLUDE,
     });
     this.logger.log(`tenant ${t.slug} (${id}) reactivated`);
     return this.toTenantResponse(updated);
@@ -402,18 +454,7 @@ export class TenantsService {
     return { id, slug: t.slug, deleted: true };
   }
 
-  private toTenantResponse(t: {
-    id: string;
-    slug: string;
-    name: string;
-    defaultLocale: string;
-    planId: string | null;
-    trialEndsAt: Date | null;
-    pendingOwnerEmail: string | null;
-    status: string;
-    archivedAt: Date | null;
-    createdAt: Date;
-  }): TenantResponseDto {
+  private toTenantResponse(t: TenantWithOwner): TenantResponseDto {
     return {
       id: t.id,
       slug: t.slug,
@@ -426,6 +467,7 @@ export class TenantsService {
       status: t.status,
       archivedAt: t.archivedAt,
       pendingOwnerEmail: t.pendingOwnerEmail,
+      ownerEmail: t.memberships[0]?.user.email ?? null,
       createdAt: t.createdAt,
     };
   }

@@ -33,6 +33,9 @@ export type Tenant = {
   // ADR-015: email pre-assigned by admin while the owner hasn't signed up
   // yet. Null after the AuthGuard JIT-binds them on first sign-in.
   pendingOwnerEmail: string | null;
+  // Email of the currently-bound owner (oldest Membership.role=owner).
+  // Null when the tenant has no owner yet.
+  ownerEmail: string | null;
   createdAt: string;
 };
 

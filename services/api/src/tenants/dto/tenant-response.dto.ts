@@ -80,6 +80,18 @@ export class TenantResponseDto {
   })
   pendingOwnerEmail!: string | null;
 
+  @ApiProperty({
+    description:
+      "Email of the currently-bound owner (the User with the oldest " +
+      "Membership.role=owner). null if the tenant has no owner yet — in " +
+      "which case `pendingOwnerEmail` may still be set, waiting for that " +
+      "person's first sign-in.",
+    example: "owner@bar-roma.al",
+    nullable: true,
+    type: String,
+  })
+  ownerEmail!: string | null;
+
   @ApiProperty({ example: "2026-05-16T12:00:00.000Z" })
   createdAt!: Date;
 }

@@ -78,10 +78,13 @@ export function FunnelPanel({ tenant }: { tenant: Tenant }) {
   }
 
   async function setOwner() {
+    const currentNote = tenant.ownerEmail
+      ? `Current owner: ${tenant.ownerEmail}. Type a new email to add another owner (the existing owner is NOT removed).`
+      : tenant.pendingOwnerEmail
+        ? `Currently pending: ${tenant.pendingOwnerEmail}. Type a new email to replace it.`
+        : "Owner email — bound immediately if they've already signed up, otherwise pending until their first sign-in.";
     const email = window.prompt(
-      tenant.pendingOwnerEmail
-        ? `Change pending owner email (was: ${tenant.pendingOwnerEmail})`
-        : "Owner email — bound immediately if they've already signed up, otherwise pending until their first sign-in.",
+      currentNote,
       tenant.pendingOwnerEmail ?? "",
     );
     if (!email) return;
@@ -164,11 +167,17 @@ export function FunnelPanel({ tenant }: { tenant: Tenant }) {
           disabled={busy}
           className="rounded-lg border border-brand-ink/15 bg-white px-3 py-1.5 text-xs font-medium text-brand-ink/80 transition hover:bg-brand-fog disabled:opacity-50"
         >
-          {tenant.pendingOwnerEmail ? "Change owner…" : "Set owner…"}
+          {tenant.ownerEmail || tenant.pendingOwnerEmail
+            ? "Change owner…"
+            : "Set owner…"}
         </button>
       </div>
 
-      {tenant.pendingOwnerEmail ? (
+      {tenant.ownerEmail ? (
+        <p className="mt-3 rounded-lg border border-brand-mint/40 bg-brand-mint/10 px-3 py-2 text-xs text-brand-deep">
+          <strong>Owner:</strong> {tenant.ownerEmail}
+        </p>
+      ) : tenant.pendingOwnerEmail ? (
         <p className="mt-3 rounded-lg border border-brand-blue/20 bg-brand-blue/5 px-3 py-2 text-xs text-brand-deep">
           <strong>Pending owner:</strong> {tenant.pendingOwnerEmail} — they
           haven&apos;t signed up yet. They&apos;ll be bound as owner
