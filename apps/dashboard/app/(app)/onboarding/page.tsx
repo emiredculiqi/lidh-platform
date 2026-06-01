@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { api } from "@/lib/api-server";
 import { OnboardingForm } from "@/components/OnboardingForm";
+import { T } from "@/components/T";
 import type { PersonaPreset } from "@/lib/api-server";
 
 export const dynamic = "force-dynamic";
@@ -26,15 +27,29 @@ export default async function OnboardingPage() {
     presets = [];
   }
 
+  const greetName = me.user.name ?? me.user.email;
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <h1 className="font-display text-2xl font-semibold text-brand-deep">
-          Set up your business
+          <T al="Konfiguro biznesin tënd" en="Set up your business" />
         </h1>
         <p className="mt-1 text-sm text-brand-ink/55">
-          One short step and your AI assistant is ready to test. Welcome,{" "}
-          <strong>{me.user.name ?? me.user.email}</strong>.
+          <T
+            al={
+              <>
+                Vetëm një hap i shkurtër dhe asistenti yt me AI është gati për
+                testim. Mirë se erdhe, <strong>{greetName}</strong>.
+              </>
+            }
+            en={
+              <>
+                One short step and your AI assistant is ready to test. Welcome,{" "}
+                <strong>{greetName}</strong>.
+              </>
+            }
+          />
         </p>
       </div>
       <OnboardingForm presets={presets} />

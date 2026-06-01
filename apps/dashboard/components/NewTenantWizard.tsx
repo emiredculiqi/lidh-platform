@@ -4,11 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, type PersonaPreset } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
-// Full-page tenant creation: business details, persona, demo/widget settings
-// and (optional) initial knowledge sources — all in one place. On submit the
-// tenant is created first, then each queued knowledge source is ingested
-// against the new tenant, then we land on its Overview.
+// Full-page tenant creation: business details, persona, widget settings
+// and (optional) initial knowledge sources — all in one place. On submit
+// the tenant is created first, then each queued knowledge source is
+// ingested against the new tenant, then we land on its Overview.
 
 const LOCALES = ["al", "en", "it", "fr", "de"] as const;
 const MAX_FILE_BYTES = 14 * 1024 * 1024; // ~ Fastify 20MB ÷ base64 inflate
@@ -37,6 +38,116 @@ function fileToBase64(f: File): Promise<string> {
 
 export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
   const router = useRouter();
+
+  const t = useT({
+    al: {
+      business: "Biznesi",
+      name: "Emri *",
+      slug: "Slug * (shkronja të vogla me viza)",
+      defaultLanguage: "Gjuha kryesore",
+      agentName: "Emri i agjentit (opsional)",
+      agentNamePlaceholder: "Si parazgjedhje “<emër> Assistant”",
+      businessFacts:
+        "Fakte për biznesin (opsionale) — oraret, kontakti, rregullat; futen në çdo prompt",
+      ownerEmailLabel:
+        "Email i pronarit (opsional) — nëse regjistrohen më vonë në app.lidh.al me këtë email, do të lidhen automatikisht si pronarë.",
+      ownerEmailPlaceholder: "owner@business.al",
+      persona: "Personaliteti",
+      customOption: "I personalizuar (shkruaje vetë, në shqip)",
+      previewExplainer: "Krijon personalitete në ",
+      previewExplainer2: ". Pamje paraprake në shqip:",
+      customPlaceholder:
+        "Personaliteti i agjentit (në shqip) — toni, çfarë ndihmon, rregullat",
+      widget: "Widget",
+      funnelExplainer1: "Faqja e funelit në ",
+      funnelExplainer2:
+        " krijohet automatikisht. Çdo biznes i ri fillon me një provë 15-ditore.",
+      originsLabel:
+        "Origjinat e lejuara për widget (opsionale, ndarë me presje) — vetëm nëse SMB-ja e fut chat-in edhe në faqen e vet.",
+      knowledge: "Njohuria (opsionale)",
+      knowledgeDesc:
+        "Shto faqen e klientit, dokumentet ose tekstin e ngjitur — futen menjëherë pas krijimit të biznesit. Mund ta bësh edhe më vonë.",
+      remove: "hiq",
+      crawlUrl: "Crawl URL",
+      uploadFile: "Ngarko skedar",
+      pasteText: "Ngjit tekst",
+      pastedTextLabel: "Tekst i ngjitur",
+      titlePlaceholder: "Titulli (opsional) — p.sh. Lista e çmimeve",
+      contentPlaceholder:
+        "Ngjit përmbajtjen (oraret, shërbimet, FAQ, çmimet…).",
+      addToList: "+ Shto në listë",
+      cancel: "Anulo",
+      creating: "Duke krijuar…",
+      createTenant: "Krijo biznesin",
+      createTenantWith: (n: number) =>
+        `Krijo biznesin + ${n} burim${n === 1 ? "" : "e"}`,
+      tenantCreatedTitle:
+        "Biznesi u krijua ✓ — por disa burime njohurish nuk u futën:",
+      tenantCreatedRetry: "Riprovo këto në faqen Përmbledhje të biznesit.",
+      continueToTenant: "Vazhdo te biznesi →",
+      errEnterUrl: "vendos një URL",
+      errPasteMin: "ngjit të paktën 20 karaktere",
+      errChooseFile: "zgjidh një skedar",
+      errFileTooLarge: "skedari shumë i madh (max ~14MB)",
+      errFailed: "dështoi",
+      errDefault: "biznesi nuk u krijua dot",
+      errCouldNotRead: "skedari nuk u lexua dot",
+    },
+    en: {
+      business: "Business",
+      name: "Name *",
+      slug: "Slug * (lowercase-hyphen)",
+      defaultLanguage: "Default language",
+      agentName: "Agent name (optional)",
+      agentNamePlaceholder: "Defaults to “<name> Assistant”",
+      businessFacts:
+        "Business facts (optional) — hours, contact, policies; injected into every prompt",
+      ownerEmailLabel:
+        "Owner email (optional) — if they sign up later at app.lidh.al with this email, they'll be bound as owner automatically.",
+      ownerEmailPlaceholder: "owner@business.al",
+      persona: "Persona",
+      customOption: "Custom (write your own, Albanian)",
+      previewExplainer: "Creates personas in ",
+      previewExplainer2: ". Albanian preview:",
+      customPlaceholder:
+        "Agent persona (Albanian) — tone, what it helps with, rules",
+      widget: "Widget",
+      funnelExplainer1: "The funnel page at ",
+      funnelExplainer2:
+        " is created automatically. Every new tenant starts on a 15-day trial.",
+      originsLabel:
+        "Allowed widget origins (optional, comma-separated) — only needed if the SMB also embeds the chat on their own website.",
+      knowledge: "Knowledge (optional)",
+      knowledgeDesc:
+        "Add the customer's website, documents or pasted text — ingested right after the tenant is created. You can also do this later.",
+      remove: "remove",
+      crawlUrl: "Crawl URL",
+      uploadFile: "Upload file",
+      pasteText: "Paste text",
+      pastedTextLabel: "Pasted text",
+      titlePlaceholder: "Title (optional) — e.g. Price list",
+      contentPlaceholder:
+        "Paste the content (hours, services, FAQ, prices…).",
+      addToList: "+ Add to list",
+      cancel: "Cancel",
+      creating: "Creating…",
+      createTenant: "Create tenant",
+      createTenantWith: (n: number) =>
+        `Create tenant + ${n} source${n === 1 ? "" : "s"}`,
+      tenantCreatedTitle:
+        "Tenant created ✓ — but some knowledge sources didn't ingest:",
+      tenantCreatedRetry:
+        "Retry these on the tenant's Overview page.",
+      continueToTenant: "Continue to tenant →",
+      errEnterUrl: "enter a URL",
+      errPasteMin: "paste at least 20 characters",
+      errChooseFile: "choose a file",
+      errFileTooLarge: "file too large (max ~14MB)",
+      errFailed: "failed",
+      errDefault: "could not create tenant",
+      errCouldNotRead: "could not read file",
+    },
+  });
 
   // ── business ──
   const [name, setName] = useState("");
@@ -86,20 +197,19 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
     setKErr(null);
     try {
       if (kMode === "url") {
-        if (!kUri.trim()) throw new Error("enter a URL");
+        if (!kUri.trim()) throw new Error(t.errEnterUrl);
         setSources((s) => [
           ...s,
           { kind: "url", label: kUri.trim(), uri: kUri.trim() },
         ]);
         setKUri("");
       } else if (kMode === "paste") {
-        if (kContent.trim().length < 20)
-          throw new Error("paste at least 20 characters");
+        if (kContent.trim().length < 20) throw new Error(t.errPasteMin);
         setSources((s) => [
           ...s,
           {
             kind: "paste",
-            label: kTitle.trim() || "Pasted text",
+            label: kTitle.trim() || t.pastedTextLabel,
             title: kTitle.trim(),
             content: kContent,
           },
@@ -107,9 +217,8 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
         setKTitle("");
         setKContent("");
       } else {
-        if (!kFile) throw new Error("choose a file");
-        if (kFile.size > MAX_FILE_BYTES)
-          throw new Error("file too large (max ~14MB)");
+        if (!kFile) throw new Error(t.errChooseFile);
+        if (kFile.size > MAX_FILE_BYTES) throw new Error(t.errFileTooLarge);
         const base64 = await fileToBase64(kFile);
         setSources((s) => [
           ...s,
@@ -118,7 +227,7 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
         setKFile(null);
       }
     } catch (e) {
-      setKErr(e instanceof Error ? e.message : "failed");
+      setKErr(e instanceof Error ? e.message : t.errFailed);
     }
   }
 
@@ -151,11 +260,11 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
       const body = presetId
         ? { ...base, presetId }
         : { ...base, personas: [{ locale: "al", content: persona }] };
-      const t = await api.createTenant(body);
-      tenantSlug = t.slug;
-      setCreatedSlug(t.slug);
+      const tenant = await api.createTenant(body);
+      tenantSlug = tenant.slug;
+      setCreatedSlug(tenant.slug);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "could not create tenant");
+      setErr(e instanceof Error ? e.message : t.errDefault);
       setBusy(false);
       return;
     }
@@ -182,7 +291,7 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
         }
       } catch (e) {
         failed.push(
-          `${s.label} — ${e instanceof Error ? e.message : "failed"}`,
+          `${s.label} — ${e instanceof Error ? e.message : t.errFailed}`,
         );
       }
     }
@@ -196,26 +305,21 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
     }
   }
 
-  // Tenant created but some knowledge failed — don't lose the tenant.
   if (createdSlug && sourceErrors.length > 0) {
     return (
       <div className="space-y-3 rounded-xl border border-brand-ink/10 bg-white p-5">
-        <p className="font-medium text-brand-deep">
-          Tenant created ✓ — but some knowledge sources didn&apos;t ingest:
-        </p>
+        <p className="font-medium text-brand-deep">{t.tenantCreatedTitle}</p>
         <ul className="list-disc space-y-1 pl-5 text-sm text-red-600">
           {sourceErrors.map((m, i) => (
             <li key={i}>{m}</li>
           ))}
         </ul>
-        <p className="text-sm text-brand-ink/55">
-          Retry these on the tenant&apos;s Overview page.
-        </p>
+        <p className="text-sm text-brand-ink/55">{t.tenantCreatedRetry}</p>
         <Link
           href={`/tenants/${createdSlug}`}
           className="inline-block rounded-lg bg-brand-blue px-4 py-2 text-sm font-medium text-white"
         >
-          Continue to tenant →
+          {t.continueToTenant}
         </Link>
       </div>
     );
@@ -230,10 +334,10 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
     <form onSubmit={submit} className="space-y-5">
       {/* Business */}
       <section className={card}>
-        <h2 className={heading}>Business</h2>
+        <h2 className={heading}>{t.business}</h2>
         <div className="grid grid-cols-2 gap-3">
           <label className="space-y-1">
-            <span className="text-xs text-brand-ink/60">Name *</span>
+            <span className="text-xs text-brand-ink/60">{t.name}</span>
             <input
               required
               value={name}
@@ -243,9 +347,7 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
             />
           </label>
           <label className="space-y-1">
-            <span className="text-xs text-brand-ink/60">
-              Slug * (lowercase-hyphen)
-            </span>
+            <span className="text-xs text-brand-ink/60">{t.slug}</span>
             <input
               required
               value={slug}
@@ -258,7 +360,9 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
             />
           </label>
           <label className="space-y-1">
-            <span className="text-xs text-brand-ink/60">Default language</span>
+            <span className="text-xs text-brand-ink/60">
+              {t.defaultLanguage}
+            </span>
             <select
               value={defaultLocale}
               onChange={(e) => setDefaultLocale(e.target.value)}
@@ -272,22 +376,17 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
             </select>
           </label>
           <label className="space-y-1">
-            <span className="text-xs text-brand-ink/60">
-              Agent name (optional)
-            </span>
+            <span className="text-xs text-brand-ink/60">{t.agentName}</span>
             <input
               value={agentName}
               onChange={(e) => setAgentName(e.target.value)}
-              placeholder="Defaults to “<name> Assistant”"
+              placeholder={t.agentNamePlaceholder}
               className={input}
             />
           </label>
         </div>
         <label className="space-y-1">
-          <span className="text-xs text-brand-ink/60">
-            Business facts (optional) — hours, contact, policies; injected
-            into every prompt
-          </span>
+          <span className="text-xs text-brand-ink/60">{t.businessFacts}</span>
           <textarea
             value={businessFacts}
             onChange={(e) => setFacts(e.target.value)}
@@ -296,15 +395,12 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
           />
         </label>
         <label className="space-y-1">
-          <span className="text-xs text-brand-ink/60">
-            Owner email (optional) — if they sign up later at app.lidh.al
-            with this email, they&apos;ll be bound as owner automatically.
-          </span>
+          <span className="text-xs text-brand-ink/60">{t.ownerEmailLabel}</span>
           <input
             type="email"
             value={ownerEmail}
             onChange={(e) => setOwnerEmail(e.target.value)}
-            placeholder="owner@business.al"
+            placeholder={t.ownerEmailPlaceholder}
             className={input}
           />
         </label>
@@ -312,7 +408,7 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
 
       {/* Persona */}
       <section className={card}>
-        <h2 className={heading}>Persona</h2>
+        <h2 className={heading}>{t.persona}</h2>
         <select
           value={presetId}
           onChange={(e) => setPresetId(e.target.value)}
@@ -323,13 +419,14 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
               {p.label} — {p.description}
             </option>
           ))}
-          <option value="">Custom (write your own, Albanian)</option>
+          <option value="">{t.customOption}</option>
         </select>
         {selectedPreset ? (
           <div className="rounded-lg border border-brand-ink/10 bg-brand-fog/50 p-3">
             <p className="text-xs text-brand-ink/55">
-              Creates personas in <strong>al, en, it, fr, de</strong>.
-              Albanian preview:
+              {t.previewExplainer}
+              <strong>al, en, it, fr, de</strong>
+              {t.previewExplainer2}
             </p>
             <p className="mt-1 text-sm text-brand-ink/80">{previewAl}</p>
           </div>
@@ -339,7 +436,7 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
             value={persona}
             onChange={(e) => setPersona(e.target.value)}
             rows={4}
-            placeholder="Agent persona (Albanian) — tone, what it helps with, rules"
+            placeholder={t.customPlaceholder}
             className={input}
           />
         )}
@@ -347,16 +444,14 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
 
       {/* Widget origins */}
       <section className={card}>
-        <h2 className={heading}>Widget</h2>
+        <h2 className={heading}>{t.widget}</h2>
         <p className="text-sm text-brand-ink/55">
-          The funnel page at <code>app.lidh.al/b/{slug || "&lt;slug&gt;"}</code>{" "}
-          is created automatically. Every new tenant starts on a 15-day trial.
+          {t.funnelExplainer1}
+          <code>app.lidh.al/b/{slug || "<slug>"}</code>
+          {t.funnelExplainer2}
         </p>
         <label className="space-y-1">
-          <span className="text-xs text-brand-ink/60">
-            Allowed widget origins (optional, comma-separated) — only needed
-            if the SMB also embeds the chat on their own website.
-          </span>
+          <span className="text-xs text-brand-ink/60">{t.originsLabel}</span>
           <input
             value={origins}
             onChange={(e) => setOrigins(e.target.value)}
@@ -368,11 +463,8 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
 
       {/* Knowledge */}
       <section className={card}>
-        <h2 className={heading}>Knowledge (optional)</h2>
-        <p className="text-sm text-brand-ink/55">
-          Add the customer&apos;s website, documents or pasted text — ingested
-          right after the tenant is created. You can also do this later.
-        </p>
+        <h2 className={heading}>{t.knowledge}</h2>
+        <p className="text-sm text-brand-ink/55">{t.knowledgeDesc}</p>
 
         {sources.length > 0 ? (
           <ul className="space-y-1">
@@ -392,7 +484,7 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
                   }
                   className="text-xs text-red-600 hover:underline"
                 >
-                  remove
+                  {t.remove}
                 </button>
               </li>
             ))}
@@ -414,11 +506,7 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
                   : "text-brand-ink/55 hover:text-brand-ink"
               }`}
             >
-              {m === "url"
-                ? "Crawl URL"
-                : m === "upload"
-                  ? "Upload file"
-                  : "Paste text"}
+              {m === "url" ? t.crawlUrl : m === "upload" ? t.uploadFile : t.pasteText}
             </button>
           ))}
         </div>
@@ -444,14 +532,14 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
               <input
                 value={kTitle}
                 onChange={(e) => setKTitle(e.target.value)}
-                placeholder="Title (optional) — e.g. Price list"
+                placeholder={t.titlePlaceholder}
                 className={input}
               />
               <textarea
                 value={kContent}
                 onChange={(e) => setKContent(e.target.value)}
                 rows={4}
-                placeholder="Paste the content (hours, services, FAQ, prices…)."
+                placeholder={t.contentPlaceholder}
                 className={input}
               />
             </>
@@ -462,7 +550,7 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
               onClick={addSource}
               className="rounded-lg border border-brand-ink/15 px-3 py-1.5 text-sm font-medium hover:bg-brand-fog"
             >
-              + Add to list
+              {t.addToList}
             </button>
             {kErr ? (
               <span className="text-sm text-red-600">{kErr}</span>
@@ -479,16 +567,16 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
           className="rounded-lg bg-brand-blue px-5 py-2.5 text-sm font-medium text-white shadow-glow transition hover:opacity-90 disabled:opacity-40"
         >
           {busy
-            ? "Creating…"
+            ? t.creating
             : sources.length > 0
-              ? `Create tenant + ${sources.length} source${sources.length > 1 ? "s" : ""}`
-              : "Create tenant"}
+              ? t.createTenantWith(sources.length)
+              : t.createTenant}
         </button>
         <Link
           href="/tenants"
           className="rounded-lg px-4 py-2 text-sm text-brand-ink/60 hover:text-brand-ink"
         >
-          Cancel
+          {t.cancel}
         </Link>
       </div>
     </form>

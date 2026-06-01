@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { apiBase } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { Markdown } from "./Markdown";
 
 type Msg = { role: "user" | "assistant"; text: string };
@@ -23,6 +24,23 @@ export function DemoChat({
   const sessionRef = useRef(
     `demo-${Math.random().toString(36).slice(2)}`,
   );
+
+  const t = useT({
+    al: {
+      poweredBy: "Mundësuar nga Lidh.al",
+      askAnything: (business: string) =>
+        `Pyetni çfarëdo për ${business} — orare, shërbime, çmime…`,
+      messagePlaceholder: "Shkruani një mesazh…",
+      send: "Dërgo",
+    },
+    en: {
+      poweredBy: "Powered by Lidh.al",
+      askAnything: (business: string) =>
+        `Ask anything about ${business} — hours, services, prices…`,
+      messagePlaceholder: "Write a message…",
+      send: "Send",
+    },
+  });
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -86,14 +104,12 @@ export function DemoChat({
   return (
     <div className="mx-auto flex h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-brand-ink/10 bg-white shadow-glow">
       <div className="bg-brand-gradient px-5 py-4 text-white">
-        <p className="text-sm opacity-80">Demo · powered by Lidh.al</p>
+        <p className="text-sm opacity-80">{t.poweredBy}</p>
         <p className="font-display text-lg font-semibold">{businessName}</p>
       </div>
       <div className="flex-1 space-y-3 overflow-y-auto p-5">
         {msgs.length === 0 ? (
-          <p className="text-sm text-brand-ink/45">
-            Pyetni çfarëdo për {businessName} — orare, shërbime, çmime…
-          </p>
+          <p className="text-sm text-brand-ink/45">{t.askAnything(businessName)}</p>
         ) : null}
         {msgs.map((m, i) => (
           <div
@@ -127,14 +143,14 @@ export function DemoChat({
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Shkruani një mesazh…"
+          placeholder={t.messagePlaceholder}
           className="flex-1 rounded-lg border border-brand-ink/15 px-3 py-2 text-sm"
         />
         <button
           disabled={busy}
           className="rounded-lg bg-brand-blue px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          {busy ? "…" : "Dërgo"}
+          {busy ? "…" : t.send}
         </button>
       </form>
     </div>

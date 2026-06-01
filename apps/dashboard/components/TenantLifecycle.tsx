@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
 // Tenant lifecycle controls (ADR-008): archive ⇄ reactivate (reversible,
 // data kept) and hard delete (irreversible, type-the-slug confirmation).
@@ -24,6 +25,61 @@ export function TenantLifecycle({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [typed, setTyped] = useState("");
 
+  const t = useT({
+    al: {
+      heading: "Cikli i jetës",
+      currentStatus: "Statusi aktual: ",
+      statusActive: "aktiv",
+      statusArchived: "arkivuar",
+      archiveBtn: "Arkivo (pezullo shërbimin)",
+      archiving: "Duke arkivuar…",
+      reactivateBtn: "Riaktivizo",
+      reactivating: "Duke riaktivizuar…",
+      archivedNoticeStart: "Shërbimi është ",
+      archivedNoticeBold: "i pezulluar",
+      archivedNoticeEnd:
+        ". Agjenti nuk përgjigjet në asnjë kanal (web, funel, WhatsApp). Të gjitha të dhënat ruhen — riaktivizoje në çdo kohë.",
+      dangerZone: "Zona e rrezikut",
+      dangerDesc1: "Fshirja heq biznesin dhe ",
+      dangerDescBold: "gjithçka",
+      dangerDesc2:
+        " që lidhet me të — agjentin, njohuritë, bisedat, klientët potencialë, kontaktet, përdorimin dhe dokumentet e ngarkuara. Ky veprim nuk mund të kthehet pas.",
+      deletePermanently: "Fshi përgjithmonë…",
+      typeSlugStart: "Shkruaj slug-un ",
+      typeSlugEnd: " për të konfirmuar:",
+      iUnderstand: "E kuptoj — fshi përgjithmonë",
+      deleting: "Duke fshirë…",
+      cancel: "Anulo",
+      defaultErr: "dështoi",
+    },
+    en: {
+      heading: "Lifecycle",
+      currentStatus: "Current status: ",
+      statusActive: "active",
+      statusArchived: "archived",
+      archiveBtn: "Archive (pause service)",
+      archiving: "Archiving…",
+      reactivateBtn: "Reactivate",
+      reactivating: "Reactivating…",
+      archivedNoticeStart: "Service is ",
+      archivedNoticeBold: "paused",
+      archivedNoticeEnd:
+        ". The agent does not reply on any channel (web, funnel, WhatsApp). All data is retained — reactivate any time.",
+      dangerZone: "Danger zone",
+      dangerDesc1: "Deleting removes the tenant and ",
+      dangerDescBold: "everything",
+      dangerDesc2:
+        " tied to it — agent, knowledge, conversations, leads, contacts, usage and uploaded documents. This cannot be undone.",
+      deletePermanently: "Delete permanently…",
+      typeSlugStart: "Type the slug ",
+      typeSlugEnd: " to confirm:",
+      iUnderstand: "I understand — delete forever",
+      deleting: "Deleting…",
+      cancel: "Cancel",
+      defaultErr: "failed",
+    },
+  });
+
   async function run(
     action: "archive" | "reactivate" | "delete",
     fn: () => Promise<unknown>,
@@ -35,7 +91,7 @@ export function TenantLifecycle({
       await fn();
       after();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "failed");
+      setErr(e instanceof Error ? e.message : t.defaultErr);
     } finally {
       setBusy(null);
     }
@@ -46,10 +102,10 @@ export function TenantLifecycle({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-display text-lg font-semibold text-brand-deep">
-            Lifecycle
+            {t.heading}
           </h2>
           <p className="text-sm text-brand-ink/55">
-            Current status:{" "}
+            {t.currentStatus}
             <span
               className={`rounded px-2 py-0.5 text-xs font-medium ${
                 status === "active"
@@ -57,7 +113,7 @@ export function TenantLifecycle({
                   : "bg-accent-orange/15 text-accent-orange"
               }`}
             >
-              {status}
+              {status === "active" ? t.statusActive : t.statusArchived}
             </span>
           </p>
         </div>
@@ -74,7 +130,7 @@ export function TenantLifecycle({
             }
             className="rounded-lg border border-accent-orange/40 px-4 py-2 text-sm font-medium text-accent-orange transition hover:bg-accent-orange/5 disabled:opacity-50"
           >
-            {busy === "archive" ? "Archiving…" : "Archive (pause service)"}
+            {busy === "archive" ? t.archiving : t.archiveBtn}
           </button>
         ) : (
           <button
@@ -88,26 +144,26 @@ export function TenantLifecycle({
             }
             className="rounded-lg bg-brand-blue px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-50"
           >
-            {busy === "reactivate" ? "Reactivating…" : "Reactivate"}
+            {busy === "reactivate" ? t.reactivating : t.reactivateBtn}
           </button>
         )}
       </div>
 
       {status === "archived" ? (
         <p className="rounded-lg border border-accent-orange/30 bg-accent-orange/5 px-3 py-2 text-sm text-brand-ink/70">
-          Service is <strong>paused</strong>. The agent does not reply on any
-          channel (web, demo, WhatsApp). All data is retained — reactivate any
-          time.
+          {t.archivedNoticeStart}
+          <strong>{t.archivedNoticeBold}</strong>
+          {t.archivedNoticeEnd}
         </p>
       ) : null}
 
       {/* Danger zone */}
       <div className="rounded-lg border border-red-200 bg-red-50/50 p-4">
-        <p className="text-sm font-medium text-red-700">Danger zone</p>
+        <p className="text-sm font-medium text-red-700">{t.dangerZone}</p>
         <p className="mt-1 text-xs text-red-700/80">
-          Deleting removes the tenant and <strong>everything</strong> tied to
-          it — agent, knowledge, conversations, leads, contacts, usage and
-          uploaded documents. This cannot be undone.
+          {t.dangerDesc1}
+          <strong>{t.dangerDescBold}</strong>
+          {t.dangerDesc2}
         </p>
 
         {!confirmDelete ? (
@@ -115,14 +171,14 @@ export function TenantLifecycle({
             onClick={() => setConfirmDelete(true)}
             className="mt-3 rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 transition hover:bg-red-100"
           >
-            Delete permanently…
+            {t.deletePermanently}
           </button>
         ) : (
           <div className="mt-3 space-y-2">
             <label className="block text-xs text-red-700">
-              Type the slug{" "}
-              <code className="rounded bg-white px-1 py-0.5">{slug}</code> to
-              confirm:
+              {t.typeSlugStart}
+              <code className="rounded bg-white px-1 py-0.5">{slug}</code>
+              {t.typeSlugEnd}
             </label>
             <input
               autoFocus
@@ -146,9 +202,7 @@ export function TenantLifecycle({
                 }
                 className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-40"
               >
-                {busy === "delete"
-                  ? "Deleting…"
-                  : "I understand — delete forever"}
+                {busy === "delete" ? t.deleting : t.iUnderstand}
               </button>
               <button
                 type="button"
@@ -158,7 +212,7 @@ export function TenantLifecycle({
                 }}
                 className="rounded-lg px-4 py-2 text-sm text-brand-ink/60"
               >
-                Cancel
+                {t.cancel}
               </button>
             </div>
           </div>

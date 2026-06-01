@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, type PersonaPreset } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
 // Self-serve business signup form (ADR-013). Auto-slugifies the name on the
 // fly until the user edits the slug. POSTs to /v1/onboarding/business which
@@ -18,6 +19,42 @@ function slugify(s: string): string {
 
 export function OnboardingForm({ presets }: { presets: PersonaPreset[] }) {
   const router = useRouter();
+  const t = useT({
+    al: {
+      businessHeading: "Biznesi",
+      nameLabel: "Emri *",
+      namePlaceholder: "Bar Roma",
+      slugLabel: "Slug * (shkronja të vogla me viza)",
+      slugPlaceholder: "bar-roma",
+      factsLabel:
+        "Fakte për biznesin (opsionale) — oraret, kontakti, rregullat; futen në çdo prompt",
+      personaHeading: "Personaliteti",
+      customOption: "I personalizuar (shkruaje vetë, në shqip)",
+      previewLabel: "Pamje paraprake në shqip:",
+      customPlaceholder:
+        "Personaliteti i agjentit (në shqip) — toni, çfarë ndihmon, rregullat",
+      defaultErr: "nuk arritëm ta krijonim biznesin",
+      creating: "Duke krijuar…",
+      submit: "Krijo biznesin tim",
+    },
+    en: {
+      businessHeading: "Business",
+      nameLabel: "Name *",
+      namePlaceholder: "Bar Roma",
+      slugLabel: "Slug * (lowercase-hyphen)",
+      slugPlaceholder: "bar-roma",
+      factsLabel:
+        "Business facts (optional) — hours, contact, policies; injected into every prompt",
+      personaHeading: "Persona",
+      customOption: "Custom (write your own, Albanian)",
+      previewLabel: "Albanian preview:",
+      customPlaceholder:
+        "Agent persona (Albanian) — tone, what it helps with, rules",
+      defaultErr: "could not create business",
+      creating: "Creating…",
+      submit: "Create my business",
+    },
+  });
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -52,7 +89,7 @@ export function OnboardingForm({ presets }: { presets: PersonaPreset[] }) {
     setBusy(true);
     setErr(null);
     try {
-      const t = await api.onboardBusiness({
+      const tenant = await api.onboardBusiness({
         name: name.trim(),
         slug,
         defaultLocale: "al",
@@ -62,39 +99,36 @@ export function OnboardingForm({ presets }: { presets: PersonaPreset[] }) {
           ? undefined
           : customPersona.trim() || undefined,
       });
-      router.push(`/tenants/${t.slug}`);
+      router.push(`/tenants/${tenant.slug}`);
       router.refresh();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "could not create business");
+      setErr(e instanceof Error ? e.message : t.defaultErr);
       setBusy(false);
     }
   }
 
   const card = "space-y-3 rounded-xl border border-brand-ink/10 bg-white p-5";
-  const input =
-    "w-full rounded border border-brand-ink/15 px-3 py-2 text-sm";
+  const input = "w-full rounded border border-brand-ink/15 px-3 py-2 text-sm";
 
   return (
     <form onSubmit={submit} className="space-y-5">
       <section className={card}>
         <h2 className="font-display font-semibold text-brand-deep">
-          Business
+          {t.businessHeading}
         </h2>
         <div className="grid grid-cols-2 gap-3">
           <label className="space-y-1">
-            <span className="text-xs text-brand-ink/60">Name *</span>
+            <span className="text-xs text-brand-ink/60">{t.nameLabel}</span>
             <input
               required
               value={name}
               onChange={(e) => onName(e.target.value)}
-              placeholder="Bar Roma"
+              placeholder={t.namePlaceholder}
               className={input}
             />
           </label>
           <label className="space-y-1">
-            <span className="text-xs text-brand-ink/60">
-              Slug * (lowercase-hyphen)
-            </span>
+            <span className="text-xs text-brand-ink/60">{t.slugLabel}</span>
             <input
               required
               value={slug}
@@ -102,16 +136,13 @@ export function OnboardingForm({ presets }: { presets: PersonaPreset[] }) {
                 setSlugTouched(true);
                 setSlug(e.target.value);
               }}
-              placeholder="bar-roma"
+              placeholder={t.slugPlaceholder}
               className={input}
             />
           </label>
         </div>
         <label className="space-y-1">
-          <span className="text-xs text-brand-ink/60">
-            Business facts (optional) — hours, contact, policies; injected
-            into every prompt
-          </span>
+          <span className="text-xs text-brand-ink/60">{t.factsLabel}</span>
           <textarea
             value={businessFacts}
             onChange={(e) => setFacts(e.target.value)}
@@ -122,7 +153,9 @@ export function OnboardingForm({ presets }: { presets: PersonaPreset[] }) {
       </section>
 
       <section className={card}>
-        <h2 className="font-display font-semibold text-brand-deep">Persona</h2>
+        <h2 className="font-display font-semibold text-brand-deep">
+          {t.personaHeading}
+        </h2>
         <select
           value={presetId}
           onChange={(e) => setPresetId(e.target.value)}
@@ -133,13 +166,11 @@ export function OnboardingForm({ presets }: { presets: PersonaPreset[] }) {
               {p.label} — {p.description}
             </option>
           ))}
-          <option value="">Custom (write your own, Albanian)</option>
+          <option value="">{t.customOption}</option>
         </select>
         {selected ? (
           <div className="rounded-lg border border-brand-ink/10 bg-brand-fog/50 p-3">
-            <p className="text-xs text-brand-ink/55">
-              Albanian preview:
-            </p>
+            <p className="text-xs text-brand-ink/55">{t.previewLabel}</p>
             <p className="mt-1 text-sm text-brand-ink/80">{previewAl}</p>
           </div>
         ) : (
@@ -148,7 +179,7 @@ export function OnboardingForm({ presets }: { presets: PersonaPreset[] }) {
             value={customPersona}
             onChange={(e) => setCustomPersona(e.target.value)}
             rows={4}
-            placeholder="Agent persona (Albanian) — tone, what it helps with, rules"
+            placeholder={t.customPlaceholder}
             className={input}
           />
         )}
@@ -161,7 +192,7 @@ export function OnboardingForm({ presets }: { presets: PersonaPreset[] }) {
           disabled={!canSubmit || busy}
           className="rounded-lg bg-brand-blue px-5 py-2.5 text-sm font-medium text-white shadow-glow transition hover:opacity-90 disabled:opacity-40"
         >
-          {busy ? "Creating…" : "Create my business"}
+          {busy ? t.creating : t.submit}
         </button>
       </div>
     </form>

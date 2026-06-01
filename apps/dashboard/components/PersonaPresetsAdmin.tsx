@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, type PersonaPreset } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 
 // Edit / add / deactivate persona presets (ADR-010). Presets are copied into
 // a tenant at create time, so edits here only affect FUTURE tenants — never
@@ -22,6 +23,35 @@ export function PersonaPresetsAdmin({
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  const t = useT({
+    al: {
+      close: "Mbyll",
+      newPreset: "+ Personalitet i ri",
+      inactive: "joaktiv",
+      edit: "Ndrysho",
+      deactivate: "Çaktivizo",
+      reactivate: "Riaktivizo",
+      created: (label: string) => `U krijua “${label}”.`,
+      deactivated: (label: string) => `U çaktivizua “${label}”.`,
+      reactivated: (label: string) => `U riaktivizua “${label}”.`,
+      saved: (label: string) => `U ruajt “${label}”.`,
+      defaultErr: "dështoi",
+    },
+    en: {
+      close: "Close",
+      newPreset: "+ New preset",
+      inactive: "inactive",
+      edit: "Edit",
+      deactivate: "Deactivate",
+      reactivate: "Reactivate",
+      created: (label: string) => `Created "${label}".`,
+      deactivated: (label: string) => `Deactivated "${label}".`,
+      reactivated: (label: string) => `Reactivated "${label}".`,
+      saved: (label: string) => `Saved "${label}".`,
+      defaultErr: "failed",
+    },
+  });
+
   async function run(fn: () => Promise<unknown>, ok: string) {
     setBusy(true);
     setErr(null);
@@ -31,7 +61,7 @@ export function PersonaPresetsAdmin({
       setMsg(ok);
       router.refresh();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "failed");
+      setErr(e instanceof Error ? e.message : t.defaultErr);
     } finally {
       setBusy(false);
     }
@@ -54,7 +84,7 @@ export function PersonaPresetsAdmin({
           }}
           className="rounded-lg bg-brand-blue px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:opacity-90"
         >
-          {adding ? "Close" : "+ New preset"}
+          {adding ? t.close : t.newPreset}
         </button>
       </div>
 
@@ -66,7 +96,7 @@ export function PersonaPresetsAdmin({
             run(async () => {
               await api.createPersonaPreset(v);
               setAdding(false);
-            }, `Created "${v.label}".`)
+            }, t.created(v.label))
           }
         />
       ) : null}
@@ -85,7 +115,7 @@ export function PersonaPresetsAdmin({
                 </span>
                 {!p.active ? (
                   <span className="ml-2 rounded bg-brand-ink/10 px-2 py-0.5 text-xs text-brand-ink/60">
-                    inactive
+                    {t.inactive}
                   </span>
                 ) : null}
               </p>
@@ -98,7 +128,7 @@ export function PersonaPresetsAdmin({
                 }
                 className="rounded-lg border border-brand-ink/15 px-3 py-1.5 text-sm hover:bg-brand-fog"
               >
-                {openId === p.id ? "Close" : "Edit"}
+                {openId === p.id ? t.close : t.edit}
               </button>
               {p.active ? (
                 <button
@@ -106,26 +136,25 @@ export function PersonaPresetsAdmin({
                   onClick={() =>
                     run(
                       () => api.deletePersonaPreset(p.id),
-                      `Deactivated "${p.label}".`,
+                      t.deactivated(p.label),
                     )
                   }
                   className="rounded-lg border border-red-300 px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50"
                 >
-                  Deactivate
+                  {t.deactivate}
                 </button>
               ) : (
                 <button
                   disabled={busy}
                   onClick={() =>
                     run(
-                      () =>
-                        api.updatePersonaPreset(p.id, { active: true }),
-                      `Reactivated "${p.label}".`,
+                      () => api.updatePersonaPreset(p.id, { active: true }),
+                      t.reactivated(p.label),
                     )
                   }
                   className="rounded-lg border border-brand-ink/15 px-3 py-1.5 text-sm hover:bg-brand-fog disabled:opacity-50"
                 >
-                  Reactivate
+                  {t.reactivate}
                 </button>
               )}
             </div>
@@ -145,7 +174,7 @@ export function PersonaPresetsAdmin({
                   run(async () => {
                     await api.updatePersonaPreset(p.id, v);
                     setOpenId(null);
-                  }, `Saved "${v.label}".`)
+                  }, t.saved(v.label))
                 }
               />
             </div>
@@ -175,6 +204,34 @@ function PresetForm({
   }) => void;
   onCancel: () => void;
 }) {
+  const t = useT({
+    al: {
+      labelPlaceholder: "Emërtimi (p.sh. Restorant, kafe & bar)",
+      descPlaceholder: "Përshkrim i shkurtër",
+      helperBefore: "Përdor ",
+      helperAfter:
+        " aty ku duhet të shfaqet emri i biznesit. ",
+      helperRequired: "al",
+      helperRest: " është i detyrueshëm; të tjerët opsionalë.",
+      requiredPrimary: " (i detyrueshëm, kryesor)",
+      cancel: "Anulo",
+      save: "Ruaj",
+      saving: "Duke ruajtur…",
+    },
+    en: {
+      labelPlaceholder: "Label (e.g. Restaurant, café & bar)",
+      descPlaceholder: "Short description",
+      helperBefore: "Use ",
+      helperAfter: " where the tenant's name should appear. ",
+      helperRequired: "al",
+      helperRest: " is required; others optional.",
+      requiredPrimary: " (required, primary)",
+      cancel: "Cancel",
+      save: "Save",
+      saving: "Saving…",
+    },
+  });
+
   const [label, setLabel] = useState(initial?.label ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [personas, setPersonas] = useState<Record<string, string>>(
@@ -188,27 +245,30 @@ function PresetForm({
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <input
-          placeholder="Label (e.g. Restaurant, café & bar)"
+          placeholder={t.labelPlaceholder}
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           className="rounded border border-brand-ink/15 px-3 py-2 text-sm"
         />
         <input
-          placeholder="Short description"
+          placeholder={t.descPlaceholder}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           className="rounded border border-brand-ink/15 px-3 py-2 text-sm"
         />
       </div>
       <p className="text-xs text-brand-ink/55">
-        Use <code>{"{business}"}</code> where the tenant&apos;s name should
-        appear. <strong>al</strong> is required; others optional.
+        {t.helperBefore}
+        <code>{"{business}"}</code>
+        {t.helperAfter}
+        <strong>{t.helperRequired}</strong>
+        {t.helperRest}
       </p>
       {LOCALES.map((loc) => (
         <div key={loc} className="space-y-1">
           <label className="text-xs font-medium text-brand-ink/60">
             {loc}
-            {loc === "al" ? " (required, primary)" : ""}
+            {loc === "al" ? t.requiredPrimary : ""}
           </label>
           <textarea
             value={personas[loc] ?? ""}
@@ -232,14 +292,14 @@ function PresetForm({
           }
           className="rounded-lg bg-brand-blue px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
         >
-          {busy ? "Saving…" : "Save"}
+          {busy ? t.saving : t.save}
         </button>
         <button
           type="button"
           onClick={onCancel}
           className="rounded-lg px-4 py-2 text-sm text-brand-ink/60"
         >
-          Cancel
+          {t.cancel}
         </button>
       </div>
     </div>

@@ -1,5 +1,6 @@
 import { api } from "@/lib/api-server";
 import { TenantNav } from "@/components/TenantNav";
+import { T } from "@/components/T";
 
 export const dynamic = "force-dynamic";
 
@@ -19,25 +20,37 @@ export default async function LeadsPage({
   return (
     <div className="space-y-6">
       <h1 className="font-display text-2xl font-semibold text-brand-deep">
-        Leads
+        <T al="Klientë potencialë" en="Leads" />
       </h1>
-      <TenantNav slug={slug} active="/leads" />
+      <TenantNav slug={slug} active="leads" />
 
       {leads.length === 0 ? (
         <p className="text-sm text-brand-ink/55">
-          No leads captured yet. The agent saves a lead when a visitor shows
-          clear interest.
+          <T
+            al="Ende asnjë lead i kapur. Agjenti ruan një lead kur një vizitor tregon interes të qartë."
+            en="No leads captured yet. The agent saves a lead when a visitor shows clear interest."
+          />
         </p>
       ) : (
         <div className="overflow-hidden rounded-xl border border-brand-ink/10 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-brand-fog text-left text-brand-ink/60">
               <tr>
-                <th className="px-4 py-2 font-medium">Name</th>
-                <th className="px-4 py-2 font-medium">Phone / Email</th>
-                <th className="px-4 py-2 font-medium">Notes</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-                <th className="px-4 py-2 font-medium">Captured</th>
+                <th className="px-4 py-2 font-medium">
+                  <T al="Emri" en="Name" />
+                </th>
+                <th className="px-4 py-2 font-medium">
+                  <T al="Telefoni / Email" en="Phone / Email" />
+                </th>
+                <th className="px-4 py-2 font-medium">
+                  <T al="Shënime" en="Notes" />
+                </th>
+                <th className="px-4 py-2 font-medium">
+                  <T al="Statusi" en="Status" />
+                </th>
+                <th className="px-4 py-2 font-medium">
+                  <T al="Kapur më" en="Captured" />
+                </th>
               </tr>
             </thead>
             <tbody>

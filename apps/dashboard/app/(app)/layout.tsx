@@ -2,6 +2,8 @@ import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { api } from "@/lib/api-server";
 import type { Me } from "@/lib/api-server";
+import { T } from "@/components/T";
+import { LanguageToggle } from "@/components/LanguageToggle";
 
 // Shell for every authenticated page (ADR-013). Reads /me once per request
 // (Next dedupes the fetch) to drive the nav: platform admins see the all-
@@ -28,7 +30,9 @@ export default async function AppLayout({
       <header className="flex h-14 items-center justify-between border-b border-brand-ink/10 bg-white px-6">
         <div className="flex items-center gap-6">
           <Link
-            href={isAdmin ? "/tenants" : mySlug ? `/tenants/${mySlug}` : "/onboarding"}
+            href={
+              isAdmin ? "/tenants" : mySlug ? `/tenants/${mySlug}` : "/onboarding"
+            }
             className="font-display text-lg font-semibold text-brand-deep"
           >
             Lidh.al
@@ -42,10 +46,10 @@ export default async function AppLayout({
             {isAdmin ? (
               <>
                 <Link href="/tenants" className="hover:text-brand-deep">
-                  Tenants
+                  <T al="Bizneset" en="Tenants" />
                 </Link>
                 <Link href="/persona-presets" className="hover:text-brand-deep">
-                  Persona presets
+                  <T al="Personalitete" en="Persona presets" />
                 </Link>
               </>
             ) : mySlug ? (
@@ -53,12 +57,15 @@ export default async function AppLayout({
                 href={`/tenants/${mySlug}`}
                 className="hover:text-brand-deep"
               >
-                My business
+                <T al="Biznesi im" en="My business" />
               </Link>
             ) : null}
           </nav>
         </div>
-        <UserButton />
+        <div className="flex items-center gap-3">
+          <LanguageToggle />
+          <UserButton />
+        </div>
       </header>
       <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
     </div>

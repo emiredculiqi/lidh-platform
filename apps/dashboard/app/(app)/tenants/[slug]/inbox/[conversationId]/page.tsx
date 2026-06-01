@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { api } from "@/lib/api-server";
 import { Markdown } from "@/components/Markdown";
+import { T } from "@/components/T";
 
 export const dynamic = "force-dynamic";
 
@@ -18,16 +19,23 @@ export default async function ThreadPage({
         href={`/tenants/${slug}/inbox`}
         className="text-sm text-brand-blue hover:underline"
       >
-        ← Inbox
+        ← <T al="Mesazhet" en="Inbox" />
       </Link>
 
       <div>
         <h1 className="font-display text-xl font-semibold text-brand-deep">
-          {thread.contactName || thread.contactPhone || "Anonymous visitor"}
+          {thread.contactName || thread.contactPhone || (
+            <T al="Vizitor anonim" en="Anonymous visitor" />
+          )}
         </h1>
         <p className="text-sm text-brand-ink/55">
           {thread.channelKind} · {thread.status}
-          {thread.aiPaused ? " · AI paused" : ""}
+          {thread.aiPaused ? (
+            <>
+              {" · "}
+              <T al="AI i pezulluar" en="AI paused" />
+            </>
+          ) : null}
         </p>
       </div>
 
@@ -39,7 +47,8 @@ export default async function ThreadPage({
                 key={i}
                 className="text-center text-xs text-brand-ink/40"
               >
-                — tool: {m.toolName} —
+                <T al="— veglë: " en="— tool: " />
+                {m.toolName} —
               </div>
             );
           }

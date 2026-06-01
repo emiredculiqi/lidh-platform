@@ -1,5 +1,6 @@
 import { apiBase } from "@/lib/api";
 import { DemoChat } from "@/components/DemoChat";
+import { T } from "@/components/T";
 
 export const dynamic = "force-dynamic";
 
@@ -33,10 +34,16 @@ export default async function FunnelPage({
       <main className="flex min-h-screen items-center justify-center bg-brand-fog px-6">
         <div className="max-w-md text-center">
           <h1 className="font-display text-2xl font-semibold text-brand-deep">
-            We couldn&apos;t find this business
+            <T
+              al="Nuk e gjetëm këtë biznes"
+              en="We couldn't find this business"
+            />
           </h1>
           <p className="mt-2 text-brand-ink/60">
-            The link may be mistyped. Please check the URL and try again.
+            <T
+              al="Lidhja mund të jetë e shkruar gabim. Të lutemi kontrollo URL-në dhe provo përsëri."
+              en="The link may be mistyped. Please check the URL and try again."
+            />
           </p>
         </div>
       </main>
@@ -44,16 +51,17 @@ export default async function FunnelPage({
   }
 
   if (!res.ok) {
-    // 5xx or unexpected — surface generically without leaking detail.
     return (
       <main className="flex min-h-screen items-center justify-center bg-brand-fog px-6">
         <div className="max-w-md text-center">
           <h1 className="font-display text-2xl font-semibold text-brand-deep">
-            Something went wrong
+            <T al="Diçka shkoi keq" en="Something went wrong" />
           </h1>
           <p className="mt-2 text-brand-ink/60">
-            We&apos;re having trouble reaching this business right now.
-            Please try again in a moment.
+            <T
+              al="Po hasim vështirësi për të arritur këtë biznes në këtë moment. Provo përsëri pas pak."
+              en="We're having trouble reaching this business right now. Please try again in a moment."
+            />
           </p>
         </div>
       </main>
@@ -68,9 +76,6 @@ export default async function FunnelPage({
     isActive: boolean;
   };
 
-  // Inactive → trial expired without a plan, plan lapsed, or archived.
-  // We show the BUSINESS NAME but no Lidh.al-billing chrome — keeps the SMB's
-  // brand intact in front of their own customers.
   if (!funnel.isActive) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-brand-fog px-6">
@@ -79,8 +84,10 @@ export default async function FunnelPage({
             {funnel.name}
           </h1>
           <p className="mt-3 text-brand-ink/60">
-            This business is currently offline. Please get in touch with them
-            directly and check back soon.
+            <T
+              al="Ky biznes është momentalisht offline. Të lutemi kontaktoje drejtpërdrejt dhe kthehu më vonë."
+              en="This business is currently offline. Please get in touch with them directly and check back soon."
+            />
           </p>
         </div>
       </main>
@@ -91,7 +98,7 @@ export default async function FunnelPage({
     <main className="min-h-screen bg-brand-fog px-4 py-8">
       <DemoChat tenantSlug={funnel.tenantSlug} businessName={funnel.name} />
       <p className="mx-auto mt-4 max-w-2xl text-center text-xs text-brand-ink/40">
-        Powered by Lidh.al
+        <T al="Mundësuar nga Lidh.al" en="Powered by Lidh.al" />
       </p>
     </main>
   );

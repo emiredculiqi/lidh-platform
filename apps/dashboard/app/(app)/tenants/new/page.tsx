@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { api, type PersonaPreset } from "@/lib/api-server";
 import { NewTenantWizard } from "@/components/NewTenantWizard";
+import { T } from "@/components/T";
 
 export const dynamic = "force-dynamic";
 
@@ -21,14 +22,16 @@ export default async function NewTenantPage() {
           href="/tenants"
           className="text-sm text-brand-blue hover:underline"
         >
-          ← Tenants
+          ← <T al="Bizneset" en="Tenants" />
         </Link>
         <h1 className="mt-1 font-display text-2xl font-semibold text-brand-deep">
-          New tenant
+          <T al="Biznes i ri" en="New tenant" />
         </h1>
         <p className="mt-1 text-sm text-brand-ink/55">
-          Set up the business, its agent persona, demo link and initial
-          knowledge — all in one place.
+          <T
+            al="Konfiguro biznesin, personalitetin e agjentit, URL-në e funelit dhe njohuritë fillestare — të gjitha në një vend."
+            en="Set up the business, its agent persona, funnel URL and initial knowledge — all in one place."
+          />
         </p>
       </div>
       <NewTenantWizard presets={presets} />

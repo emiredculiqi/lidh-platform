@@ -1,6 +1,7 @@
 import { api } from "@/lib/api-server";
 import { redirect } from "next/navigation";
 import { PersonaPresetsAdmin } from "@/components/PersonaPresetsAdmin";
+import { T } from "@/components/T";
 
 export const dynamic = "force-dynamic";
 
@@ -16,12 +17,17 @@ export default async function PersonaPresetsPage() {
 
   let presets;
   try {
-    presets = await api.listPersonaPresets(true); // include inactive
+    presets = await api.listPersonaPresets(true);
   } catch (e) {
     const m = e instanceof Error ? e.message : String(e);
     return (
       <div className="space-y-2 text-red-600">
-        <p className="font-medium">Couldn&apos;t load persona presets.</p>
+        <p className="font-medium">
+          <T
+            al="Personalitetet nuk u ngarkuan."
+            en="Couldn't load persona presets."
+          />
+        </p>
         <pre className="overflow-x-auto rounded bg-red-50 p-3 text-xs">
           {m}
         </pre>
@@ -33,13 +39,28 @@ export default async function PersonaPresetsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="font-display text-2xl font-semibold text-brand-deep">
-          Persona presets
+          <T al="Personalitete" en="Persona presets" />
         </h1>
         <p className="mt-1 text-sm text-brand-ink/55">
-          The standard personas offered when creating a tenant. Edit the
-          wording or add your own — applied to <strong>new</strong> tenants
-          only (existing tenants keep their personas; tweak those on each
-          tenant&apos;s Agent page).
+          <T
+            al={
+              <>
+                Personalitetet standarde që ofrohen kur krijon një biznes. Ndrysho
+                tekstin ose shto të tuat — aplikohen vetëm te biznese{" "}
+                <strong>të reja</strong> (bizneset ekzistuese ruajnë
+                personalitetet e tyre; ndryshoji ato në faqen Agjenti të çdo
+                biznesi).
+              </>
+            }
+            en={
+              <>
+                The standard personas offered when creating a tenant. Edit the
+                wording or add your own — applied to <strong>new</strong> tenants
+                only (existing tenants keep their personas; tweak those on each
+                tenant&apos;s Agent page).
+              </>
+            }
+          />
         </p>
       </div>
       <PersonaPresetsAdmin initial={presets} />

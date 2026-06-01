@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { apiBase } from "@/lib/api";
+import { useT } from "@/lib/i18n";
 import { Markdown } from "./Markdown";
 
 type Msg = { role: "user" | "assistant"; text: string };
@@ -15,6 +16,21 @@ export function TestChat({ tenantSlug }: { tenantSlug: string }) {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const sessionRef = useRef(`dash-test-${Math.random().toString(36).slice(2)}`);
+
+  const t = useT({
+    al: {
+      empty:
+        "Testo agjentin si do ta bënte një vizitor. Provo të pyesësh për oraret, shërbimet ose çmimet.",
+      placeholder: "Shkruaj një mesazh…",
+      send: "Dërgo",
+    },
+    en: {
+      empty:
+        "Test the agent as a visitor would. Try asking about the business's hours, services, or pricing.",
+      placeholder: "Type a message…",
+      send: "Send",
+    },
+  });
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -95,10 +111,7 @@ export function TestChat({ tenantSlug }: { tenantSlug: string }) {
     <div className="flex h-[60vh] flex-col rounded-xl border border-brand-ink/10 bg-white">
       <div className="flex-1 space-y-3 overflow-y-auto p-4">
         {msgs.length === 0 ? (
-          <p className="text-sm text-brand-ink/45">
-            Test the agent as a visitor would. Try asking about the
-            business&apos;s hours, services, or pricing.
-          </p>
+          <p className="text-sm text-brand-ink/45">{t.empty}</p>
         ) : null}
         {msgs.map((m, i) => (
           <div
@@ -132,14 +145,14 @@ export function TestChat({ tenantSlug }: { tenantSlug: string }) {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message…"
+          placeholder={t.placeholder}
           className="flex-1 rounded border border-brand-ink/15 px-3 py-2 text-sm"
         />
         <button
           disabled={busy}
           className="rounded-lg bg-brand-blue px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
-          {busy ? "…" : "Send"}
+          {busy ? "…" : t.send}
         </button>
       </form>
     </div>

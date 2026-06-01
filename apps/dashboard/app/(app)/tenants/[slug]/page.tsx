@@ -3,6 +3,7 @@ import { TenantNav } from "@/components/TenantNav";
 import { AddKnowledge } from "@/components/AddKnowledge";
 import { TenantLifecycle } from "@/components/TenantLifecycle";
 import { FunnelPanel } from "@/components/FunnelPanel";
+import { T } from "@/components/T";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +20,10 @@ export default async function TenantOverview({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [tenant, sources] = await Promise.all([
+  const [tenant, sources, me] = await Promise.all([
     api.getTenant(slug),
     api.listKnowledge(slug),
+    api.me(),
   ]);
 
   return (
@@ -39,34 +41,50 @@ export default async function TenantOverview({
                 : "text-brand-ink/55"
             }
           >
-            {tenant.status}
+            {tenant.status === "archived" ? (
+              <T al="arkivuar" en="archived" />
+            ) : (
+              <T al="aktiv" en="active" />
+            )}
           </span>{" "}
-          · default locale {tenant.defaultLocale}
+          ·{" "}
+          <T
+            al={`gjuha kryesore ${tenant.defaultLocale}`}
+            en={`default locale ${tenant.defaultLocale}`}
+          />
         </p>
       </div>
 
       <TenantNav slug={slug} active="overview" />
 
-      <FunnelPanel tenant={tenant} />
+      <FunnelPanel tenant={tenant} isPlatformAdmin={me.user.isPlatformAdmin} />
 
       <section className="space-y-3">
         <h2 className="font-display text-lg font-semibold text-brand-deep">
-          Knowledge
+          <T al="Njohuria" en="Knowledge" />
         </h2>
         <AddKnowledge tenantSlug={slug} />
         {sources.length === 0 ? (
           <p className="text-sm text-brand-ink/55">
-            No sources yet. Add the customer&apos;s website above — it gets
-            crawled, chunked and embedded automatically.
+            <T
+              al="Asnjë burim deri tani. Shto faqen e klientit lart — bëhet crawl, ndahet dhe embed-ohet automatikisht."
+              en="No sources yet. Add the customer's website above — it gets crawled, chunked and embedded automatically."
+            />
           </p>
         ) : (
           <div className="overflow-hidden rounded-xl border border-brand-ink/10 bg-white">
             <table className="w-full text-sm">
               <thead className="bg-brand-fog text-left text-brand-ink/60">
                 <tr>
-                  <th className="px-4 py-2 font-medium">Source</th>
-                  <th className="px-4 py-2 font-medium">Status</th>
-                  <th className="px-4 py-2 font-medium">Chunks</th>
+                  <th className="px-4 py-2 font-medium">
+                    <T al="Burimi" en="Source" />
+                  </th>
+                  <th className="px-4 py-2 font-medium">
+                    <T al="Statusi" en="Status" />
+                  </th>
+                  <th className="px-4 py-2 font-medium">
+                    <T al="Pjesë" en="Chunks" />
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -79,7 +97,12 @@ export default async function TenantOverview({
                         <div className="mt-1 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
                           <span aria-hidden>⚠️</span>
                           <span>
-                            <strong>Couldn&apos;t process this source.</strong>{" "}
+                            <strong>
+                              <T
+                                al="Burimi nuk u përpunua."
+                                en="Couldn't process this source."
+                              />
+                            </strong>{" "}
                             {s.error}
                           </span>
                         </div>
@@ -102,7 +125,10 @@ export default async function TenantOverview({
               </tbody>
             </table>
             <p className="px-4 py-2 text-xs text-brand-ink/45">
-              Refresh the page to update ingestion status.
+              <T
+                al="Rifresko faqen për të parë statusin më të fundit."
+                en="Refresh the page to update ingestion status."
+              />
             </p>
           </div>
         )}
