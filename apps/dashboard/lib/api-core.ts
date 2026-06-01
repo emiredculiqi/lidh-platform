@@ -30,6 +30,9 @@ export type Tenant = {
   isActive: boolean;
   status: "active" | "archived";
   archivedAt: string | null;
+  // ADR-015: email pre-assigned by admin while the owner hasn't signed up
+  // yet. Null after the AuthGuard JIT-binds them on first sign-in.
+  pendingOwnerEmail: string | null;
   createdAt: string;
 };
 

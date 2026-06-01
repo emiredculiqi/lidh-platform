@@ -3,6 +3,7 @@ import { Type } from "class-transformer";
 import {
   ArrayMinSize,
   IsArray,
+  IsEmail,
   IsOptional,
   IsString,
   Matches,
@@ -96,4 +97,17 @@ export class CreateTenantDto {
   @IsArray()
   @IsString({ each: true })
   webAllowedOrigins?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      "Business owner's email. If a User with this email already exists " +
+      "(they signed up before the admin created the tenant) they're bound " +
+      "as `owner` immediately. Otherwise stored on Tenant.pendingOwnerEmail " +
+      "and bound on their first sign-in via AuthGuard's JIT-create step " +
+      "(ADR-015). Case-insensitive.",
+    example: "owner@bar-roma.al",
+  })
+  @IsOptional()
+  @IsEmail()
+  ownerEmail?: string;
 }

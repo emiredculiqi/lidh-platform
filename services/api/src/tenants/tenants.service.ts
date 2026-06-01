@@ -97,6 +97,26 @@ export class TenantsService {
     // tenants live on the trial until they pay.
     const trialEndsAt = new Date(Date.now() + TRIAL_MS);
 
+    // ADR-015: owner-email binding. If the admin provided an ownerEmail,
+    // try to resolve it to an existing User now — if found, bind them
+    // immediately as `owner`. Otherwise stash the email on Tenant so the
+    // AuthGuard JIT-creates path binds them on their first sign-in.
+    // Self-serve flows (ownerUserId set) ignore ownerEmail — the signer is
+    // already the owner.
+    let directOwnerUserId: string | null = ownerUserId ?? null;
+    let pendingOwnerEmail: string | null = null;
+    if (!ownerUserId && dto.ownerEmail) {
+      const existing = await db.user.findFirst({
+        where: { email: { equals: dto.ownerEmail, mode: "insensitive" } },
+        select: { id: true },
+      });
+      if (existing) {
+        directOwnerUserId = existing.id;
+      } else {
+        pendingOwnerEmail = dto.ownerEmail;
+      }
+    }
+
     try {
       const tenant = await db.$transaction(async (tx) => {
         const t = await tx.tenant.create({
@@ -108,6 +128,7 @@ export class TenantsService {
               ? { businessFacts: dto.businessFacts }
               : {},
             trialEndsAt,
+            pendingOwnerEmail,
           },
         });
 
@@ -143,11 +164,12 @@ export class TenantsService {
           },
         });
 
-        // Self-serve onboarding (ADR-013): the creating user becomes the
-        // tenant's owner. Atomic with the rest of the create.
-        if (ownerUserId) {
+        // Owner binding (ADR-013 self-serve OR ADR-015 admin-resolved):
+        // create the Membership(owner) in the same transaction so the user
+        // is owner from the very first request.
+        if (directOwnerUserId) {
           await tx.membership.create({
-            data: { userId: ownerUserId, tenantId: t.id, role: "owner" },
+            data: { userId: directOwnerUserId, tenantId: t.id, role: "owner" },
           });
         }
 
@@ -332,6 +354,7 @@ export class TenantsService {
     defaultLocale: string;
     planId: string | null;
     trialEndsAt: Date | null;
+    pendingOwnerEmail: string | null;
     status: string;
     archivedAt: Date | null;
     createdAt: Date;
@@ -347,6 +370,7 @@ export class TenantsService {
       isActive: isTenantActive(t),
       status: t.status,
       archivedAt: t.archivedAt,
+      pendingOwnerEmail: t.pendingOwnerEmail,
       createdAt: t.createdAt,
     };
   }

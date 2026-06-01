@@ -140,6 +140,14 @@ export function FunnelPanel({ tenant }: { tenant: Tenant }) {
         </button>
       </div>
 
+      {tenant.pendingOwnerEmail ? (
+        <p className="mt-3 rounded-lg border border-brand-blue/20 bg-brand-blue/5 px-3 py-2 text-xs text-brand-deep">
+          <strong>Pending owner:</strong> {tenant.pendingOwnerEmail} — they
+          haven&apos;t signed up yet. They&apos;ll be bound as owner
+          automatically on their first sign-in at app.lidh.al/sign-up.
+        </p>
+      ) : null}
+
       {err ? (
         <p className="mt-2 text-xs text-red-600">{err}</p>
       ) : null}

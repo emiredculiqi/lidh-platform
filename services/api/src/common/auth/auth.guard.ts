@@ -103,6 +103,34 @@ export class AuthGuard implements CanActivate {
         },
       });
       this.logger.log(`JIT-provisioned user ${email} (clerkId=${clerkId})`);
+
+      // ADR-015: bind any tenants the admin pre-assigned to this email.
+      // Case-insensitive match — emails are case-insensitive per RFC, and
+      // admins typing into a form will mix-case unpredictably.
+      const pending = await db.tenant.findMany({
+        where: { pendingOwnerEmail: { equals: email, mode: "insensitive" } },
+        select: { id: true, slug: true },
+      });
+      if (pending.length > 0) {
+        await db.$transaction([
+          db.membership.createMany({
+            data: pending.map((t) => ({
+              userId: user!.id,
+              tenantId: t.id,
+              role: "owner" as const,
+            })),
+            skipDuplicates: true,
+          }),
+          db.tenant.updateMany({
+            where: { id: { in: pending.map((t) => t.id) } },
+            data: { pendingOwnerEmail: null },
+          }),
+        ]);
+        this.logger.log(
+          `bound ${pending.length} pending tenant(s) to ${email}: ` +
+            pending.map((t) => t.slug).join(", "),
+        );
+      }
     }
 
     // Keep admin flag in sync with the allowlist cheaply (no Clerk call).

@@ -45,6 +45,7 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
   const [defaultLocale, setDefaultLocale] = useState("al");
   const [agentName, setAgentName] = useState("");
   const [businessFacts, setFacts] = useState("");
+  const [ownerEmail, setOwnerEmail] = useState("");
 
   // ── persona ── "" = custom
   const [presetId, setPresetId] = useState(presets[0]?.id ?? "");
@@ -141,6 +142,7 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
         defaultLocale,
         agentName: agentName.trim() || undefined,
         businessFacts: businessFacts.trim() || undefined,
+        ownerEmail: ownerEmail.trim() || undefined,
         webAllowedOrigins: origins
           .split(",")
           .map((o) => o.trim())
@@ -290,6 +292,19 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
             value={businessFacts}
             onChange={(e) => setFacts(e.target.value)}
             rows={2}
+            className={input}
+          />
+        </label>
+        <label className="space-y-1">
+          <span className="text-xs text-brand-ink/60">
+            Owner email (optional) — if they sign up later at app.lidh.al
+            with this email, they&apos;ll be bound as owner automatically.
+          </span>
+          <input
+            type="email"
+            value={ownerEmail}
+            onChange={(e) => setOwnerEmail(e.target.value)}
+            placeholder="owner@business.al"
             className={input}
           />
         </label>

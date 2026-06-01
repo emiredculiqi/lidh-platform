@@ -189,6 +189,14 @@ model Tenant {
   // For Albanian SMBs without their own website, the funnel URL is too
   // valuable to expire mid-funnel — gate the *service*, not the *URL*.
 
+  // ─── Owner binding (ADR-015) ────────────────────────────────────────────
+  // When an admin provisions a tenant on behalf of a customer who hasn't
+  // signed up yet, we stash their email here. The AuthGuard's JIT-user step
+  // scans this column on every brand-new sign-in: if an email match is
+  // found, the new User is bound as `owner` and the field is nulled out.
+  // No invite-token / email infra needed.
+  pendingOwnerEmail String?
+
   // ─── Service lifecycle (ADR-008) ────────────────────────────────────────
   // active → archived (subscription paused; agent stops serving, data kept,
   // reversible) → row delete (cascades all tenant data). Existing rows
@@ -214,6 +222,7 @@ model Tenant {
   usageDaily       UsageDaily[]
 
   @@index([planId])
+  @@index([pendingOwnerEmail])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -68,6 +68,18 @@ export class TenantResponseDto {
   })
   archivedAt!: Date | null;
 
+  @ApiProperty({
+    description:
+      "Owner's email pre-assigned by admin (ADR-015). Set when the tenant " +
+      "was created on the SMB's behalf but no User with that email existed " +
+      "yet. AuthGuard JIT-binds them as owner on first sign-in, then nulls " +
+      "this. While set, the SMB doesn't yet have dashboard access.",
+    example: null,
+    nullable: true,
+    type: String,
+  })
+  pendingOwnerEmail!: string | null;
+
   @ApiProperty({ example: "2026-05-16T12:00:00.000Z" })
   createdAt!: Date;
 }
