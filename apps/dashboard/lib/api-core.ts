@@ -244,5 +244,7 @@ export function makeApi(t: Transport) {
       t.post<Tenant>(`/tenants/${id}/grant-plan`, { planId }),
     extendTrial: (id: string, days: number) =>
       t.post<Tenant>(`/tenants/${id}/extend-trial`, { days }),
+    setOwner: (id: string, email: string) =>
+      t.post<Tenant>(`/tenants/${id}/set-owner`, { email }),
   };
 }

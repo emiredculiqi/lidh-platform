@@ -12,7 +12,7 @@ import {
   ApiOperation,
   ApiTags,
 } from "@nestjs/swagger";
-import { IsInt, IsString, Max, Min, MinLength } from "class-validator";
+import { IsEmail, IsInt, IsString, Max, Min, MinLength } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 import { Public } from "../common/auth/public.decorator";
 import { PlatformAdminOnly } from "../common/auth/platform-admin.decorator";
@@ -42,6 +42,18 @@ class ExtendTrialDto {
   @Min(1)
   @Max(365)
   days!: number;
+}
+
+class SetOwnerDto {
+  @ApiProperty({
+    description:
+      "Owner's email. Bound immediately if a User with this email exists; " +
+      "otherwise stored as Tenant.pendingOwnerEmail for AuthGuard to bind " +
+      "on first sign-in. Case-insensitive.",
+    example: "owner@bar-roma.al",
+  })
+  @IsEmail()
+  email!: string;
 }
 
 @ApiTags("Tenants")
@@ -114,6 +126,24 @@ export class TenantsController {
     @Body() dto: ExtendTrialDto,
   ): Promise<TenantResponseDto> {
     return this.tenants.extendTrial(id, dto.days);
+  }
+
+  @Post("tenants/:id/set-owner")
+  @PlatformAdminOnly()
+  @ApiOperation({
+    summary: "Set / change the tenant's intended business owner by email",
+    description:
+      "Binds the email as owner: immediately via Membership(owner) if a " +
+      "User exists with that email, else stashed as Tenant.pendingOwnerEmail " +
+      "and bound on first sign-in (ADR-015). Idempotent for the same email. " +
+      "Does not remove existing memberships.",
+  })
+  @ApiOkResponse({ type: TenantResponseDto })
+  setOwner(
+    @Param("id") id: string,
+    @Body() dto: SetOwnerDto,
+  ): Promise<TenantResponseDto> {
+    return this.tenants.setOwner(id, dto.email);
   }
 
   @Post("tenants/:id/archive")

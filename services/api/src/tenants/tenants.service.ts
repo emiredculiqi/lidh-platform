@@ -97,24 +97,14 @@ export class TenantsService {
     // tenants live on the trial until they pay.
     const trialEndsAt = new Date(Date.now() + TRIAL_MS);
 
-    // ADR-015: owner-email binding. If the admin provided an ownerEmail,
-    // try to resolve it to an existing User now — if found, bind them
-    // immediately as `owner`. Otherwise stash the email on Tenant so the
-    // AuthGuard JIT-creates path binds them on their first sign-in.
-    // Self-serve flows (ownerUserId set) ignore ownerEmail — the signer is
-    // already the owner.
+    // ADR-015: owner-email binding. Self-serve flows (ownerUserId set)
+    // ignore ownerEmail — the signer is already the owner.
     let directOwnerUserId: string | null = ownerUserId ?? null;
     let pendingOwnerEmail: string | null = null;
     if (!ownerUserId && dto.ownerEmail) {
-      const existing = await db.user.findFirst({
-        where: { email: { equals: dto.ownerEmail, mode: "insensitive" } },
-        select: { id: true },
-      });
-      if (existing) {
-        directOwnerUserId = existing.id;
-      } else {
-        pendingOwnerEmail = dto.ownerEmail;
-      }
+      const resolved = await this.resolveOwnerEmail(dto.ownerEmail);
+      directOwnerUserId = resolved.userId;
+      pendingOwnerEmail = resolved.pendingEmail;
     }
 
     try {
@@ -292,6 +282,71 @@ export class TenantsService {
     });
     this.logger.log(`tenant ${t.slug} (${id}) trial extended by ${days}d`);
     return this.toTenantResponse(updated);
+  }
+
+  /**
+   * Admin: set / change the tenant's intended owner by email (ADR-015).
+   * Mirrors the `ownerEmail` behavior of `createTenant`: binds immediately
+   * if a User with that email already exists, else stores it as pending.
+   *
+   * Does NOT remove existing memberships. If you assign owner A and later
+   * change to owner B, both end up with `owner` role until a separate
+   * membership-management endpoint is built. Idempotent for the same email.
+   */
+  async setOwner(id: string, email: string): Promise<TenantResponseDto> {
+    const db = this.prisma.client;
+    const t = await db.tenant.findUnique({ where: { id } });
+    if (!t) throw new NotFoundException("tenant_not_found");
+
+    const resolved = await this.resolveOwnerEmail(email);
+
+    if (resolved.userId) {
+      // User exists → bind them now. skipDuplicates handles the case where
+      // they're already a member of this tenant (idempotent re-assignment).
+      await db.$transaction([
+        db.membership.createMany({
+          data: [
+            { userId: resolved.userId, tenantId: id, role: "owner" as const },
+          ],
+          skipDuplicates: true,
+        }),
+        db.tenant.update({
+          where: { id },
+          data: { pendingOwnerEmail: null },
+        }),
+      ]);
+      this.logger.log(`tenant ${t.slug} (${id}) owner set: existing user ${email}`);
+    } else {
+      await db.tenant.update({
+        where: { id },
+        data: { pendingOwnerEmail: resolved.pendingEmail },
+      });
+      this.logger.log(
+        `tenant ${t.slug} (${id}) owner pending: ${resolved.pendingEmail}`,
+      );
+    }
+
+    const updated = await db.tenant.findUnique({ where: { id } });
+    return this.toTenantResponse(updated!);
+  }
+
+  /**
+   * Resolve an email to either an existing User.id (immediate bind) or
+   * a normalized pending email (deferred bind on first sign-in).
+   * Shared by createTenant and setOwner.
+   */
+  private async resolveOwnerEmail(
+    rawEmail: string,
+  ): Promise<{ userId: string | null; pendingEmail: string | null }> {
+    const email = rawEmail.trim();
+    if (!email) return { userId: null, pendingEmail: null };
+    const existing = await this.prisma.client.user.findFirst({
+      where: { email: { equals: email, mode: "insensitive" } },
+      select: { id: true },
+    });
+    return existing
+      ? { userId: existing.id, pendingEmail: null }
+      : { userId: null, pendingEmail: email };
   }
 
   /**

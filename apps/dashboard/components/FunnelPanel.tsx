@@ -77,6 +77,26 @@ export function FunnelPanel({ tenant }: { tenant: Tenant }) {
     }
   }
 
+  async function setOwner() {
+    const email = window.prompt(
+      tenant.pendingOwnerEmail
+        ? `Change pending owner email (was: ${tenant.pendingOwnerEmail})`
+        : "Owner email — bound immediately if they've already signed up, otherwise pending until their first sign-in.",
+      tenant.pendingOwnerEmail ?? "",
+    );
+    if (!email) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.setOwner(tenant.id, email.trim());
+      router.refresh();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "could not set owner");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const inactive = !tenant.isActive;
 
   return (
@@ -137,6 +157,14 @@ export function FunnelPanel({ tenant }: { tenant: Tenant }) {
           className="rounded-lg border border-brand-ink/15 bg-white px-3 py-1.5 text-xs font-medium text-brand-ink/80 transition hover:bg-brand-fog disabled:opacity-50"
         >
           Grant plan…
+        </button>
+        <button
+          type="button"
+          onClick={setOwner}
+          disabled={busy}
+          className="rounded-lg border border-brand-ink/15 bg-white px-3 py-1.5 text-xs font-medium text-brand-ink/80 transition hover:bg-brand-fog disabled:opacity-50"
+        >
+          {tenant.pendingOwnerEmail ? "Change owner…" : "Set owner…"}
         </button>
       </div>
 
