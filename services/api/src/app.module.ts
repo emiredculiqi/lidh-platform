@@ -13,6 +13,8 @@ import { ConversationsModule } from "./conversations/conversations.module";
 import { LeadsModule } from "./leads/leads.module";
 import { AgentsModule } from "./agents/agents.module";
 import { WhatsappModule } from "./channels/whatsapp/whatsapp.module";
+import { PersonaPresetsModule } from "./persona-presets/persona-presets.module";
+import { OnboardingModule } from "./onboarding/onboarding.module";
 
 @Module({
   imports: [
@@ -35,6 +37,8 @@ import { WhatsappModule } from "./channels/whatsapp/whatsapp.module";
     LeadsModule,
     AgentsModule,
     WhatsappModule,
+    PersonaPresetsModule,
+    OnboardingModule,
   ],
 })
 export class AppModule {}

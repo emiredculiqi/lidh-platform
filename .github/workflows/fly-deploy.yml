@@ -1,0 +1,52 @@
+# Auto-deploys services/api to Fly.io (app: lidh-api) on every push to main
+# that touches code Fly actually builds from.
+#
+# Setup (one-time):
+#   1. Generate a Fly deploy token:
+#        fly tokens create deploy -x 999999h -a lidh-api
+#   2. Add it as a GitHub repo secret named FLY_API_TOKEN
+#        (Settings → Secrets and variables → Actions → New repository secret)
+#
+# See: docs/decisions.md and DEPLOY.md.
+
+name: Deploy API to Fly
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/api/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - ".dockerignore"
+      - ".github/workflows/fly-deploy.yml"
+
+# Cancel in-flight deploys when a newer commit arrives — no point deploying
+# an outdated SHA.
+concurrency:
+  group: fly-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Build + deploy
+    runs-on: ubuntu-latest
+    # ~5 min typical, 15 min hard ceiling so a stuck build doesn't hold the queue.
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly
+        run: >
+          flyctl deploy
+          --config services/api/fly.toml
+          --dockerfile services/api/Dockerfile
+          --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

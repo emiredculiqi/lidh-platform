@@ -15,7 +15,6 @@
   ],
   "scripts": {
     "build": "tsc",
-    "postinstall": "tsc",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

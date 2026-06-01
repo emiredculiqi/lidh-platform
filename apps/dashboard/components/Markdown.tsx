@@ -4,8 +4,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 // Renders assistant message markdown so **bold**, lists and links display
-// properly instead of as literal symbols. Mirrors apps/marketing's
-// AssistantMarkdown so web + demo + dashboard read consistently.
+// properly instead of as literal symbols. Matches the lidh.al marketing
+// site's AssistantMarkdown so web + demo + dashboard read consistently.
 export function Markdown({ content }: { content: string }) {
   return (
     <ReactMarkdown

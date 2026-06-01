@@ -4,6 +4,12 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
+  // "native" covers local dev (macOS arm64) + the Docker builder (linux-musl
+  // from node:22-alpine). "debian-openssl-3.0.x" covers the runtime image
+  // (node:22-bookworm-slim). Without the debian target, the runtime crashes
+  // on boot: "Prisma Client could not locate the Query Engine for runtime
+  // debian-openssl-3.0.x".
+  binaryTargets   = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -90,9 +96,38 @@ enum ConversationKind {
   preview
 }
 
+// Tenant service state (ADR-008). `archived` = subscription paused: the agent
+// stops serving end-customers on every channel, but all data is retained and
+// the dashboard stays readable so the operator can review/export. Reversible
+// via reactivate. Hard delete is a row delete (cascades), not a status.
+enum TenantStatus {
+  active
+  archived
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Identity (global — not tenant-scoped)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Standard persona presets (ADR-010, revises ADR-009 storage). Platform-wide,
+// editable from the dashboard "Persona presets" admin screen — no deploy.
+// Seeded on first boot from @lidh/core PERSONA_PRESETS (create-if-missing,
+// never overwrites edits). `personas` = { al, en, it, fr, de } with the
+// {business} token. `createTenant` resolves a preset from HERE (not code),
+// then expands it into one AgentPersona row per language. Presets are copied
+// at create time (no FK from tenants), so a preset can be edited/removed
+// without affecting already-created tenants. Remove = soft (active=false).
+model PersonaPreset {
+  id          String   @id @default(cuid()) // seeded rows use stable ids ("restaurant"…)
+  label       String
+  description String
+  personas    Json // { al, en, it, fr, de } — may contain {business}
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([active])
+}
 
 model User {
   id              String   @id @default(cuid())
@@ -154,6 +189,13 @@ model Tenant {
   // Opaque random URL token: demo.lidh.al/{demoToken}. Unguessable by design.
   demoToken     String?   @unique
   demoExpiresAt DateTime?
+
+  // ─── Service lifecycle (ADR-008) ────────────────────────────────────────
+  // active → archived (subscription paused; agent stops serving, data kept,
+  // reversible) → row delete (cascades all tenant data). Existing rows
+  // backfill to `active` via the enum default.
+  status     TenantStatus @default(active)
+  archivedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

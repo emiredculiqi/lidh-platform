@@ -66,15 +66,30 @@ export class CreateTenantDto {
   @IsString()
   agentName?: string;
 
-  @ApiProperty({
-    description: "At least one persona (one per language).",
+  @ApiPropertyOptional({
+    description:
+      "Apply a standard persona preset (ADR-009). Expands into one " +
+      "persona per supported language (al/en/it/fr/de), with `{business}` " +
+      "replaced by the tenant name. Mutually sufficient with `personas` — " +
+      "provide this OR `personas`. List options at GET /v1/persona-presets.",
+    example: "restaurant",
+  })
+  @IsOptional()
+  @IsString()
+  presetId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Custom personas (one per language). Provide this OR `presetId`. " +
+      "Ignored when `presetId` is set.",
     type: [PersonaInputDto],
   })
+  @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
   @ValidateNested({ each: true })
   @Type(() => PersonaInputDto)
-  personas!: PersonaInputDto[];
+  personas?: PersonaInputDto[];
 
   @ApiPropertyOptional({
     description:

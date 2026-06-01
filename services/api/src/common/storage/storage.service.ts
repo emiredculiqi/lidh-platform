@@ -3,6 +3,8 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
+  DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 
 /**
@@ -74,5 +76,51 @@ export class StorageService {
     );
     const bytes = await res.Body?.transformToByteArray();
     return bytes ? Buffer.from(bytes) : null;
+  }
+
+  /**
+   * Delete every object under a key prefix. BEST-EFFORT: tenant docs live at
+   * `tenants/<tenantId>/…` (see KnowledgeService.addDocumentSource), so this
+   * purges a tenant's originals on hard delete — the DB cascade can't reach
+   * S3. Never throws: a storage hiccup must not block the tenant deletion
+   * (leaving orphaned objects is recoverable; a half-deleted tenant is not).
+   */
+  async deleteByPrefix(prefix: string): Promise<number> {
+    if (!this.client) return 0;
+    let deleted = 0;
+    try {
+      let token: string | undefined;
+      do {
+        const listed = await this.client.send(
+          new ListObjectsV2Command({
+            Bucket: this.bucket,
+            Prefix: prefix,
+            ContinuationToken: token,
+          }),
+        );
+        const objects = (listed.Contents ?? [])
+          .map((o) => o.Key)
+          .filter((k): k is string => Boolean(k))
+          .map((Key) => ({ Key }));
+        if (objects.length > 0) {
+          await this.client.send(
+            new DeleteObjectsCommand({
+              Bucket: this.bucket,
+              Delete: { Objects: objects, Quiet: true },
+            }),
+          );
+          deleted += objects.length;
+        }
+        token = listed.IsTruncated
+          ? listed.NextContinuationToken
+          : undefined;
+      } while (token);
+    } catch (e) {
+      this.logger.error(
+        `deleteByPrefix("${prefix}") failed (continuing): ` +
+          `${e instanceof Error ? e.message : "unknown"}`,
+      );
+    }
+    return deleted;
   }
 }

@@ -15,6 +15,7 @@ RESPONSE STYLE (always follow):
 - Never use markdown headings (#, ##), horizontal rules (---), or block quotes (>).
 - At most one emoji, and only in an opening greeting or when confirming a captured contact — never decorative emoji, never an emoji per line.
 - Write contact actions as links: [text](url) (e.g. [WhatsApp](https://wa.me/...)), never raw URLs or bare email addresses.
+- Only ever use a URL that appears verbatim in the business facts or the retrieved knowledge below (knowledge items may begin with "(source: <url>)" — that is the real page). Never guess, shorten, "tidy up", or invent a path. If you don't have the exact URL for what the user asked, do NOT fabricate one — say where to look or offer to connect them with a person.
 - Do not structure replies like a brochure or feature list unless explicitly asked. Answer the question, then optionally offer a next step in one sentence.
 `.trim();
 
@@ -47,7 +48,7 @@ export function buildSystemPrompt(
 
   if (ctx.knowledgeChunks.length > 0) {
     const knowledge = [
-      "Relevant business knowledge (use this to answer; do not invent facts):",
+      'Relevant business knowledge (use this to answer; do not invent facts or URLs). An item starting with "(source: <url>)" gives the real page for that information — if you point the user there, use that exact URL:',
       "",
       ...ctx.knowledgeChunks.map((c, i) => `[${i + 1}] ${c}`),
     ].join("\n");

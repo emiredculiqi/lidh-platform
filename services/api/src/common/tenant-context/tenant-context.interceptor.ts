@@ -44,15 +44,17 @@ export class TenantContextInterceptor implements NestInterceptor {
         userId: string;
         email: string;
         isPlatformAdmin: boolean;
+        memberships: Array<{ tenantId: string; role: string }>;
       };
     }>();
 
     // Seed from req.auth, set by the global AuthGuard after verifying the
-    // Clerk token + JIT-provisioning the User (ADR-006). Public routes have
-    // no req.auth → empty context (anonymous visitor / webhook).
+    // Clerk token + JIT-provisioning the User (ADR-006/013). Public routes
+    // have no req.auth → empty context (anonymous visitor / webhook).
     const ctx: TenantContext = {
       userId: req.auth?.userId,
       isPlatformAdmin: req.auth?.isPlatformAdmin,
+      memberships: req.auth?.memberships ?? [],
     };
 
     if (ctx.userId) {

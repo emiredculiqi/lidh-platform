@@ -77,6 +77,14 @@ export class WhatsappService {
       this.logger.error(`channel ${channel.id} has no tenant/agent`);
       return;
     }
+    // Archived = subscription paused (ADR-008): drop inbound silently rather
+    // than auto-reply on a paused customer's WhatsApp line.
+    if (tenant.status === "archived") {
+      this.logger.log(
+        `inbound WhatsApp for archived tenant ${tenant.slug} — ignored`,
+      );
+      return;
+    }
 
     // Contact: unified by (tenantId, phone). Same human on web + WA collapses
     // to one Contact because phone is unique per tenant.
@@ -225,7 +233,13 @@ export class WhatsappService {
       data: { lastMsgAt: new Date() },
     });
 
-    await this.transport.sendText(msg.from, reply);
+    // Per-tenant outbound context: the WhatChimp/Meta phone_number_id lives
+    // on the resolved Channel's config (set per tenant when the channel is
+    // wired). Stub transport ignores ctx; real providers require it.
+    const cfg = (channel.config ?? {}) as { phoneNumberId?: unknown };
+    const phoneNumberId =
+      typeof cfg.phoneNumberId === "string" ? cfg.phoneNumberId : undefined;
+    await this.transport.sendText(msg.from, reply, { phoneNumberId });
   }
 
   private makeToolExecutor(

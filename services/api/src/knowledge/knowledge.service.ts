@@ -7,6 +7,8 @@ import {
 import type { KnowledgeSource } from "@lidh/db";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { EmbeddingService } from "../common/embedding/embedding.service";
+import { TenantContextService } from "../common/tenant-context/tenant-context.service";
+import { assertCanAccessTenant } from "../common/auth/access";
 import { StorageService } from "../common/storage/storage.service";
 import { crawlSite, CrawlError } from "./crawler";
 import {
@@ -45,6 +47,7 @@ export class KnowledgeService {
     private readonly prisma: PrismaService,
     private readonly embedding: EmbeddingService,
     private readonly storage: StorageService,
+    private readonly ctx: TenantContextService,
   ) {}
 
   async createSource(dto: CreateSourceDto): Promise<KnowledgeSource> {
@@ -53,6 +56,7 @@ export class KnowledgeService {
       where: { slug: dto.tenantSlug },
     });
     if (!tenant) throw new NotFoundException("tenant_not_found");
+    assertCanAccessTenant(this.ctx.get(), tenant.id);
 
     const source = await db.knowledgeSource.create({
       data: {
@@ -78,6 +82,7 @@ export class KnowledgeService {
     const db = this.prisma.client;
     const tenant = await db.tenant.findUnique({ where: { slug: tenantSlug } });
     if (!tenant) throw new NotFoundException("tenant_not_found");
+    assertCanAccessTenant(this.ctx.get(), tenant.id);
     return db.knowledgeSource.findMany({
       where: { tenantId: tenant.id },
       orderBy: { createdAt: "desc" },
@@ -106,6 +111,7 @@ export class KnowledgeService {
       where: { slug: dto.tenantSlug },
     });
     if (!tenant) throw new NotFoundException("tenant_not_found");
+    assertCanAccessTenant(this.ctx.get(), tenant.id);
 
     const title = (dto.title?.trim() || "Pasted note").slice(0, 80);
     const source = await db.knowledgeSource.create({
@@ -137,6 +143,7 @@ export class KnowledgeService {
       where: { slug: dto.tenantSlug },
     });
     if (!tenant) throw new NotFoundException("tenant_not_found");
+    assertCanAccessTenant(this.ctx.get(), tenant.id);
     if (!isSupportedDoc(dto.filename)) {
       throw new BadRequestException(
         `unsupported file type — supported: ${SUPPORTED_DOC_EXTS.join(", ")}`,

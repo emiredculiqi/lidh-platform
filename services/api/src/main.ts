@@ -50,13 +50,19 @@ async function bootstrap() {
   // Mounted after setGlobalPrefix so paths are predictable.
   setupSwagger(app);
 
-  // Bind to 0.0.0.0 so Docker/Fly can route traffic in (default 127.0.0.1
-  // would only accept loopback connections).
+  // Bind address depends on environment:
+  //  - Local (macOS): "::" — Node's fetch (undici) resolves "localhost" to ::1
+  //    first; an IPv4-only bind would refuse it, breaking the dashboard's BFF
+  //    proxy. Dual-stack accepts both.
+  //  - Fly.io: "0.0.0.0" — Fly's proxy explicitly probes IPv4. On Fly's Linux
+  //    machines, binding to "::" did NOT accept v4 connections in practice
+  //    (Fly Doctor flagged "machines are not listening on 0.0.0.0:4000").
   const port = Number(process.env.PORT ?? 4000);
-  await app.listen(port, "0.0.0.0");
+  const host = process.env.FLY_APP_NAME ? "0.0.0.0" : "::";
+  await app.listen(port, host);
 
   Logger.log(
-    `🦊 Lidh.al API running on http://0.0.0.0:${port}/v1 (NODE_ENV=${process.env.NODE_ENV ?? "development"})`,
+    `🦊 Lidh.al API running on http://${host}:${port}/v1 (NODE_ENV=${process.env.NODE_ENV ?? "development"})`,
     "Bootstrap",
   );
   if (

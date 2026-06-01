@@ -11,6 +11,7 @@ import { verifyToken, createClerkClient } from "@clerk/backend";
 import type { FastifyRequest } from "fastify";
 import { PrismaService } from "../prisma/prisma.service";
 import { IS_PUBLIC_KEY } from "./public.decorator";
+import { IS_PLATFORM_ADMIN_KEY } from "./platform-admin.decorator";
 
 /** What the guard attaches to the request for the TenantContextInterceptor. */
 export interface RequestAuth {
@@ -18,13 +19,21 @@ export interface RequestAuth {
   clerkId: string;
   email: string;
   isPlatformAdmin: boolean;
+  /** Tenants this user is a member of (ADR-013). Empty for brand-new users
+   *  who haven't completed /onboarding yet, and irrelevant for platform
+   *  admins (they see everything regardless). */
+  memberships: Array<{ tenantId: string; role: string }>;
 }
 
 /**
- * Global guard (ADR-006). @Public() routes pass through. Otherwise: verify
- * the Clerk Bearer token → JIT-provision our User from Clerk → require
- * isPlatformAdmin (M2.4 reality: every non-public route is founder/admin) →
- * attach req.auth.
+ * Global guard (ADR-006 + ADR-013). @Public() routes pass through. Otherwise:
+ * verify the Clerk Bearer token → JIT-provision our User from Clerk → load
+ * memberships → attach req.auth.
+ *
+ * Originally rejected non-admins outright (M2.4). Since ADR-013 (business
+ * onboarding) the guard accepts any authenticated user; per-tenant access
+ * is enforced downstream via assertCanAccessTenant() in services, and
+ * admin-only endpoints are gated with @PlatformAdminOnly().
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -105,19 +114,35 @@ export class AuthGuard implements CanActivate {
       });
     }
 
-    if (!user.isPlatformAdmin) {
-      // M2.4: no Membership/team flow yet → non-admins can't use admin
-      // endpoints. Relaxed when team roles land (ADR-006).
-      throw new ForbiddenException("not_a_platform_admin");
-    }
+    // ADR-013: relaxed. Any authenticated user passes; per-tenant access is
+    // enforced in services. Platform admins still get the universal pass.
+    const memberships = await db.membership.findMany({
+      where: { userId: user.id },
+      select: { tenantId: true, role: true },
+    });
 
     const auth: RequestAuth = {
       userId: user.id,
       clerkId,
       email: user.email,
       isPlatformAdmin: user.isPlatformAdmin,
+      memberships: memberships.map((m) => ({
+        tenantId: m.tenantId,
+        role: String(m.role),
+      })),
     };
     (req as unknown as { auth: RequestAuth }).auth = auth;
+
+    // @PlatformAdminOnly() gating — applied AFTER auth so we throw 403
+    // (authorized) rather than 401 (authenticated). Business users hit this
+    // on admin-only routes (managing presets, listing all tenants, etc.).
+    const adminOnly = this.reflector.getAllAndOverride<boolean>(
+      IS_PLATFORM_ADMIN_KEY,
+      [ctx.getHandler(), ctx.getClass()],
+    );
+    if (adminOnly && !auth.isPlatformAdmin) {
+      throw new ForbiddenException("platform_admin_only");
+    }
     return true;
   }
 

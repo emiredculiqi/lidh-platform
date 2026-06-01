@@ -33,9 +33,10 @@ graph TB
   smb(["SMB owner / Lidh.al admin"]):::user
 
   subgraph Vercel
-    marketing["apps/marketing<br/>Next.js — lidh.al"]:::app
     dashboard["apps/dashboard<br/>Next.js — app.lidh.al<br/>Clerk gate on /inbox*"]:::app
   end
+
+  %% Marketing site (lidh.al) lives in its own repo (ADR-012) — not shown here.
 
   subgraph FlyIo["Fly.io (Frankfurt)"]
     api["services/api<br/>NestJS + Fastify<br/>GET /v1/health"]:::svc
@@ -49,15 +50,10 @@ graph TB
     neon[("Neon Postgres<br/>+ pgvector + HNSW")]:::ext
     clerk["Clerk Auth<br/>magic-link email"]:::ext
     anthropic["Anthropic API<br/>claude-haiku-4-5"]:::ext
-    resend["Resend — email"]:::ext
   end
 
-  visitor --> marketing
-  visitor -.M2: web widget.-> dashboard
+  visitor -.web widget / demo links.-> dashboard
   smb --> dashboard
-
-  marketing -- existing chatbot --> anthropic
-  marketing -- contact form --> resend
 
   dashboard -- magic-link login --> clerk
   clerk -. webhook user.created/updated/deleted .-> dashboard
@@ -406,23 +402,24 @@ graph TD
   root --> docs[docs/]
   root --> rootCfg["package.json + pnpm-workspace.yaml<br/>turbo.json + .gitignore + .npmrc"]:::config
 
-  apps --> marketing["apps/marketing/<br/>@lidh/marketing<br/>(Next.js — lidh.al)"]:::workspace
   apps --> dashboard["apps/dashboard/<br/>@lidh/dashboard<br/>(Next.js + Clerk — app.lidh.al)"]:::workspace
 
   services --> api["services/api/<br/>@lidh/api<br/>(NestJS + Fastify — api.lidh.al)"]:::workspace
 
+  packages --> core["packages/core/<br/>@lidh/core<br/>(framework-agnostic agent runtime)"]:::workspace
   packages --> db["packages/db/<br/>@lidh/db<br/>(Prisma client + migrations)"]:::workspace
 
   docs --> diag[diagrams.md]:::config
 
-  marketing -. "@lidh/db (workspace)" .-> db
   dashboard -. "@lidh/db (workspace)" .-> db
-  api       -- "@lidh/db (workspace)" --> db
+  api       -- "@lidh/db + @lidh/core" --> db
+  api       --> core
 
-  marketing --> marketingEnv[".env.local — keys"]:::secret
   dashboard --> dashboardEnv[".env — Clerk keys"]:::secret
   api       --> apiEnv[".env — DATABASE_URL"]:::secret
   db        --> dbEnv[".env — DATABASE_URL"]:::secret
+
+  %% Marketing site (lidh.al) lives in its own repo (ADR-012) — not shown.
 ```
 
 Red dashed boxes = local secret files (gitignored, not committed).

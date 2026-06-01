@@ -1,7 +1,11 @@
 import { Body, Controller, Get, Put, Query } from "@nestjs/common";
 import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { AgentsService } from "./agents.service";
-import { AgentResponseDto, UpsertPersonaDto } from "./dto/agent.dto";
+import {
+  AgentResponseDto,
+  SetModelDto,
+  UpsertPersonaDto,
+} from "./dto/agent.dto";
 
 @ApiTags("Agents")
 @Controller("agents")
@@ -30,5 +34,19 @@ export class AgentsController {
   @ApiOkResponse({ type: AgentResponseDto })
   upsert(@Body() dto: UpsertPersonaDto): Promise<AgentResponseDto> {
     return this.agents.upsertPersona(dto.tenantSlug, dto.locale, dto.content);
+  }
+
+  @Put("model")
+  @ApiOperation({
+    summary: "Set the tenant's model (Haiku/Sonnet) — ADR-011",
+    description:
+      "Sets `Agent.modelOverride`. `model` omitted/null ⇒ platform default " +
+      "(Haiku). Takes effect on the next message (chat & WhatsApp runtimes " +
+      "read it per request). Sonnet costs more but handles harder " +
+      "conversations better.",
+  })
+  @ApiOkResponse({ type: AgentResponseDto })
+  setModel(@Body() dto: SetModelDto): Promise<AgentResponseDto> {
+    return this.agents.setModel(dto.tenantSlug, dto.model ?? null);
   }
 }

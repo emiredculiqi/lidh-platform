@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api } from "@/lib/api-server";
 import { Markdown } from "@/components/Markdown";
 
 export const dynamic = "force-dynamic";

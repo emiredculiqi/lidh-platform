@@ -1,6 +1,7 @@
-// Lifted from apps/marketing/lib/demo/crawler.ts (battle-tested), with the
-// Next.js `import "server-only"` removed — this is plain Node/TS. Marketing's
-// copy stays untouched (ADR-001 #8); consolidation is a later refactor.
+// Adapted from the lidh.al marketing site's demo crawler (battle-tested),
+// with the Next.js `import "server-only"` removed — this is plain Node/TS.
+// The marketing site lives in its own repo (ADR-012); the two crawlers
+// evolve independently from here.
 import * as cheerio from "cheerio";
 
 export const MAX_PAGES = 25;

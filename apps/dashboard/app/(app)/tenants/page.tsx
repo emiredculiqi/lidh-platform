@@ -1,19 +1,36 @@
 import Link from "next/link";
-import { api } from "@/lib/api";
-import { NewTenantForm } from "@/components/NewTenantForm";
+import { redirect } from "next/navigation";
+import { api } from "@/lib/api-server";
+import { TenantDeleteButton } from "@/components/TenantDeleteButton";
 
 export const dynamic = "force-dynamic";
 
 export default async function TenantsPage() {
+  // ADR-013: non-admins don't see the all-tenants list. Send them to their
+  // own tenant overview (or to /onboarding if they haven't created one yet).
+  const me = await api.me();
+  if (!me.user.isPlatformAdmin) {
+    if (me.memberships.length === 0) redirect("/onboarding");
+    redirect(`/tenants/${me.memberships[0].tenant.slug}`);
+  }
+
   let tenants;
   try {
     tenants = await api.listTenants();
-  } catch {
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     return (
-      <p className="text-red-600">
-        Could not reach the API. Is it running on{" "}
-        <code>localhost:4000</code>?
-      </p>
+      <div className="space-y-2 text-red-600">
+        <p className="font-medium">Couldn&apos;t load tenants.</p>
+        <pre className="overflow-x-auto rounded bg-red-50 p-3 text-xs">
+          {msg}
+        </pre>
+        <p className="text-xs text-brand-ink/60">
+          401 = not signed in / no token reached the proxy · 403 = signed in
+          but your email isn&apos;t in PLATFORM_ADMIN_EMAILS · NETWORK = API
+          unreachable.
+        </p>
+      </div>
     );
   }
 
@@ -23,7 +40,12 @@ export default async function TenantsPage() {
         <h1 className="font-display text-2xl font-semibold text-brand-deep">
           Tenants
         </h1>
-        <NewTenantForm />
+        <Link
+          href="/tenants/new"
+          className="rounded-lg bg-brand-blue px-4 py-2 text-sm font-medium text-white shadow-glow transition hover:opacity-90"
+        >
+          + New tenant
+        </Link>
       </div>
 
       {tenants.length === 0 ? (
@@ -39,6 +61,7 @@ export default async function TenantsPage() {
                 <th className="px-4 py-2 font-medium">Slug</th>
                 <th className="px-4 py-2 font-medium">Type</th>
                 <th className="px-4 py-2 font-medium">Demo link</th>
+                <th className="px-4 py-2 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -57,15 +80,22 @@ export default async function TenantsPage() {
                   </td>
                   <td className="px-4 py-2 text-brand-ink/70">{t.slug}</td>
                   <td className="px-4 py-2">
-                    {t.isDemo ? (
-                      <span className="rounded bg-accent-orange/15 px-2 py-0.5 text-xs font-medium text-accent-orange">
-                        demo
-                      </span>
-                    ) : (
-                      <span className="rounded bg-brand-mint/20 px-2 py-0.5 text-xs font-medium text-brand-deep">
-                        paid
-                      </span>
-                    )}
+                    <span className="inline-flex items-center gap-1.5">
+                      {t.isDemo ? (
+                        <span className="rounded bg-accent-orange/15 px-2 py-0.5 text-xs font-medium text-accent-orange">
+                          demo
+                        </span>
+                      ) : (
+                        <span className="rounded bg-brand-mint/20 px-2 py-0.5 text-xs font-medium text-brand-deep">
+                          paid
+                        </span>
+                      )}
+                      {t.status === "archived" ? (
+                        <span className="rounded bg-brand-ink/10 px-2 py-0.5 text-xs font-medium text-brand-ink/60">
+                          archived
+                        </span>
+                      ) : null}
+                    </span>
                   </td>
                   <td className="px-4 py-2 text-brand-ink/60">
                     {t.demoUrl ? (
@@ -73,6 +103,9 @@ export default async function TenantsPage() {
                     ) : (
                       "—"
                     )}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    <TenantDeleteButton id={t.id} name={t.name} />
                   </td>
                 </tr>
               ))}

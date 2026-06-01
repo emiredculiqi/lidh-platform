@@ -340,3 +340,378 @@ calls the API with no auth. The `User` table is empty (M1 Clerk webhook is a
   user-sync still deferred (JIT covers create; deletes/edits later).
 
 ---
+
+## ADR-007 — Server components call the API directly; proxy is client-only (fix of ADR-006)
+
+**Status:** Accepted · 2026-05-17 — corrects ADR-006's "one token code path,
+no client/server split" claim, which was wrong.
+**Context:** With auth turned on, every server-rendered dashboard page
+(`/tenants`, `/inbox`, `/leads`, `/agent`) returned a 404. ADR-006 had all
+`api.*` calls go through the BFF proxy `/api/proxy` regardless of where they
+ran. But the pages are **server components**: they call `api.listTenants()`
+*during server render*, so `lib/api.ts` did `fetch("http://localhost:3001/api/proxy/…")`
+— the Next server fetching its own route. A server-to-server fetch carries
+**no browser cookies**, so the Clerk session never reached the proxy; and
+`middleware.ts` protects `/api/proxy(.*)`, so Clerk's `auth.protect()` 404'd
+the cookie-less call before the handler ran. The proxy could therefore *never*
+serve a server component. It only ever worked for client components (browser
+fetch → cookies ride along automatically).
+
+- **Technical term:** *transport split by execution context — direct
+  server-side call with `auth()` token vs. browser→BFF proxy*.
+- **Plain:** The reception desk (proxy) only works for visitors who walk in
+  the front door carrying their pass (the browser, cookies attached). Staff
+  already *inside* the building (server components) don't go back out to the
+  street and queue at reception — they have their badge on them (`auth()`)
+  and walk straight to the back office (the API). ADR-006 sent everyone out
+  to reception, including people already inside — and the cookie-less round
+  trip got turned away at the door (middleware) every time.
+- **False start (recorded as a lesson):** first attempt kept one `lib/api.ts`
+  and branched on `typeof window`, doing `await import("@clerk/nextjs/server")`
+  only on the server. **This does not work.** A `typeof window` check is a
+  *runtime* guard; the bundler still *statically traces* dynamic `import()`
+  into the module graph of any client component that imports the file. Result:
+  `'server-only' cannot be imported from a Client Component` → every page
+  bundling a client component (e.g. `NewTenantForm`) 500'd. The client/server
+  boundary is a **build/file** boundary, not a runtime branch.
+- **Chosen:** a hard three-file split:
+  - **`lib/api-core.ts`** — client-safe: types, `apiBase`, `unwrap()`, the
+    `makeApi(transport)` factory, and `proxyTransport` (browser → `/api/proxy`).
+    Zero server-only imports, so it can enter any client bundle.
+  - **`lib/api.ts`** — `export * from "./api-core"` + `api = makeApi(proxyTransport)`.
+    What **client** components import (forms) and anything needing only
+    `apiBase`/types (TestChat/DemoChat, public demo page). Client-safe.
+  - **`lib/api-server.ts`** — `import "server-only"` (build *fails loudly* if a
+    client ever imports it) + static `import { auth } from "@clerk/nextjs/server"`
+    + a direct-call+Bearer transport; `api = makeApi(serverTransport)`. The 6
+    **server** pages import this. Same `api` shape, injected transport.
+  - The proxy route and `middleware` protection of it stay exactly as ADR-006
+    defined. Public demo page unaffected (imports only `apiBase`, hits the
+    `@Public` `/v1/demo/:token` endpoint directly — no token path).
+- **Why:** A server component already holds the request/session context;
+  HTTP-hopping through its own middleware-gated route to re-acquire a token it
+  can read directly is both broken (cookies/middleware) and pointless. Direct
+  call is the idiomatic Next App Router + Clerk pattern. The proxy remains
+  necessary and correct for client components (they genuinely can't read a
+  server-only token, and same-origin avoids CORS).
+- **Honest scope:** ADR-006's prose ("no client/server split") is the part
+  superseded — its API guard, JIT, admin allowlist, and the proxy-for-clients
+  design all stand. Also fixed alongside this: the API now binds dual-stack
+  (`::`, see main.ts) so Node's IPv6-first `localhost` resolution reaches it;
+  and the data-fetch error surfaces the real HTTP status/body instead of a
+  blanket "could not reach the API".
+
+---
+
+## ADR-008 — Tenant lifecycle: reversible archive + irreversible delete
+
+**Status:** Accepted · 2026-05-17.
+**Context:** Operators need to stop a customer's service when they cancel a
+subscription, and to fully remove a customer on request. Two distinct needs:
+"pause, I might bring them back" vs. "erase everything". Conflating them (only
+delete) loses data on every churn; only archiving never reclaims storage or
+satisfies a deletion request.
+
+- **Technical term:** *soft state machine (`TenantStatus`) for service
+  suspension, separate from a hard cascade delete*.
+- **Plain:** Two different switches, not one. **Archive** is the lights-off
+  switch: the shop is closed, the door is locked to customers, but everything
+  inside is exactly as they left it and you can reopen tomorrow. **Delete** is
+  the demolition: the building and all its contents are gone, and there is no
+  rebuild. We deliberately built them as separate switches because "closed for
+  now" and "gone forever" are not the same decision and must never be one
+  click apart by accident.
+- **Chosen:**
+  - **Schema:** `enum TenantStatus { active archived }` + `status`
+    (default `active`, backfills existing rows) + `archivedAt DateTime?` on
+    Tenant. Matches the codebase's enum-driven lifecycle style
+    (ChannelStatus, KnowledgeSourceStatus, …).
+  - **Archive = stop *serving*, not stop *existing*.** Enforced only on the
+    customer-facing paths: `chat.runWeb` (web widget + demo) and
+    `whatsapp.handleInbound` both bail when `status==='archived'`;
+    `resolveDemo` throws 410. Admin/dashboard **read** endpoints stay open so
+    the operator can still review and export an archived tenant's data before
+    deciding to delete. Reversible via `reactivate`. Both idempotent.
+  - **Delete = one row delete.** Every Tenant child
+    (agent, personas, channels, knowledge sources+chunks, contacts,
+    conversations, messages, leads, events, usage, memberships) already has
+    `onDelete: Cascade`, so `prisma.tenant.delete()` purges the lot
+    atomically. S3 originals (`tenants/<id>/…`) are *not* reachable by the DB
+    cascade → `StorageService.deleteByPrefix` purges them first, best-effort
+    (never throws: an orphaned object is recoverable, a half-deleted tenant
+    is not).
+  - **API:** `POST /v1/tenants/:id/archive`, `…/reactivate`,
+    `DELETE /v1/tenants/:id` (platform-admin, like the rest). UI requires
+    typing the slug to arm delete.
+- **Why:** Churn is normal; most "cancellations" are reversible, so the
+  default off-switch must preserve data and be one call to undo. Relying on
+  DB-level cascade (not application-level fan-out delete) makes "delete
+  everything" correct-by-construction — it can't drift as new child tables
+  are added, as long as they keep `onDelete: Cascade`. Gating only the
+  serving path (not reads) is what "interrupt their service" actually means
+  and keeps post-cancellation export possible.
+- **Honest scope:** No audit-log table — lifecycle transitions are logged
+  (Logger) but not persisted, and a `tenant_deleted` row would cascade away
+  anyway; a non-cascading audit log is deferred to M3 (billing). No
+  archive→delete ordering is enforced (independent actions, per the request).
+  Billing-driven states (`past_due`, `suspended`) are intentionally NOT added
+  now; the enum is extensible when Stripe lands (M3).
+
+---
+
+## ADR-009 — Standard persona library: code-shipped, hand-authored, 5-locale
+
+**Status:** Accepted · 2026-05-18. **Storage decision revised by ADR-010**
+(presets moved code → DB, editable). The preset *model* (pick a standard →
+expand into 5 locales with `{business}`) stands; only "code-shipped" changed.
+**Context:** Every tenant needs a system-prompt persona. Hand-writing one per
+customer per language doesn't scale and yields inconsistent quality. The
+operator wants to *pick a standard* and have it just work in Albanian
+(primary) plus EN/IT/FR/DE.
+
+- **Technical term:** *a versioned, parameterised persona template set,
+  expanded per-locale at tenant creation*.
+- **Plain:** A set of well-written "starter scripts" for the assistant — like
+  pre-set staff training manuals for a restaurant, a shop, an appointments
+  business, a help desk — each already translated into the five languages we
+  serve. You pick one off the shelf; the system stamps the business's name
+  into it and files one copy per language. You can still hand-write a bespoke
+  one when a customer is unusual.
+- **Chosen:**
+  - **Location:** `packages/core/src/personaPresets.ts` — code, not a DB
+    table. Matches the repo's "content is data" pattern, versioned with the
+    runtime, zero migration. (DB-editable presets deferred until there's a
+    real need to edit without deploy.)
+  - **Locales:** `al en it fr de`, `al` first = primary/master **and** the
+    platform fallback locale. Confirmed with the operator (German included
+    despite not being in the first ask — it's on the roadmap).
+  - **Authoring:** every preset/locale is **hand-written & vetted**, not
+    machine-translated — these get stamped onto real customers, tone matters,
+    and the preset count is small and finite. Personas cover role / scope /
+    boundaries / escalation only; formatting & brevity stay centralised in
+    `RESPONSE_STYLE` (prompt.ts) so a persona never repeats them.
+  - **Parameterisation:** literal `{business}` token, replaced with the
+    tenant name in `expandPreset()` at create time.
+  - **API:** `CreateTenantDto.presetId?` (mutually sufficient with
+    `personas`; service throws 400 if neither, or unknown id);
+    `GET /v1/persona-presets` backs the dashboard picker, which defaults to
+    the first preset and keeps a "Custom" escape hatch.
+  - Starter set (extensible — it's just data): restaurant, retail, services,
+    support.
+- **Why:** Code-shipped keeps presets consistent, reviewable and
+  deploy-versioned for a curated set the founder owns. Expanding to one
+  `AgentPersona` row per locale (not a runtime lookup) reuses the existing
+  per-locale persona selection unchanged — presets are purely a creation-time
+  convenience, invisible to the runtime.
+- **Honest scope:** No preset for an *existing* tenant yet (apply-on-create
+  only); re-applying / editing presets via the Agent page is a later add. No
+  per-tenant preset override tracking (once expanded, rows are normal
+  personas and edited like any other).
+
+---
+
+## ADR-010 — Persona presets become DB-backed & operator-editable
+
+**Status:** Accepted · 2026-05-19 — revises ADR-009's *storage* only (the
+preset model, 5-locale expansion, `{business}`, create-time application all
+stand). Supersedes the briefly-explored composable-characteristics redesign,
+which was dropped as premature (YAGNI — no usage data justified it).
+
+- **Context:** ADR-009 shipped presets in `@lidh/core`. Operating the product
+  surfaced the gap: changing a standard's wording needed a code edit +
+  redeploy. The operator wants to edit existing presets *and add new ones*
+  from the dashboard, no deploy. (Per-tenant personas were already
+  dashboard-editable on the Agent page — only the shared *templates* weren't.)
+- **Technical term:** *seed-from-code, serve-from-DB* — code holds defaults,
+  the database holds the live, editable copy.
+- **Plain:** The recipe cards used to be printed in the cookbook (reprint =
+  redeploy). Now they live on a board in the kitchen: the cookbook still
+  provides the starter set, but the chef rewrites a card or pins up a new one
+  anytime, instantly. Dishes already served are unaffected — a tenant gets a
+  *copy* of the card when created.
+- **Chosen:**
+  - New global table `PersonaPreset { id, label, description, personas(JSON
+    al/en/it/fr/de), active }`.
+  - `PersonaPresetsService.onModuleInit` seeds from `@lidh/core`
+    `PERSONA_PRESETS` **create-if-missing** (`upsert` with empty `update`):
+    new code presets appear; operator edits are never clobbered on deploy.
+  - CRUD: `GET /v1/persona-presets` (`?all` includes inactive),
+    `POST`/`PUT :id`/`DELETE :id` (soft, `active=false`). Platform-admin.
+  - `TenantsService.createTenant` resolves the preset from the **DB**
+    (`expandPersonas()` from core does the `{business}` fill); unknown or
+    inactive → 400. The code path `expandPreset` is retired in favour of
+    `expandPersonas(personasMap, name)`.
+  - Dashboard: a top-nav **"Persona presets"** admin screen (edit/add/
+    deactivate); the New-tenant picker consumes the same endpoint unchanged.
+- **Why:** Seed-from-code keeps a sane default set versioned in git and makes
+  fresh environments work with zero setup, while serve-from-DB removes the
+  deploy coupling for the operator. Presets are *copied* into a tenant at
+  create time (no FK), so editing/removing a preset is safe — existing
+  tenants are immutable to it by construction.
+- **Honest scope:** Soft-delete only (no hard delete UI — unneeded, presets
+  aren't referenced post-create). No preset versioning/audit. Composable
+  per-characteristic personas remain a possible future evolution of the
+  `personas` JSON if real usage ever demands it — deliberately not built now.
+
+---
+
+## ADR-011 — Per-tenant model choice (Haiku ⇄ Sonnet)
+
+**Status:** Accepted · 2026-05-19.
+**Context:** `Agent.modelOverride` existed and was already read by the chat &
+WhatsApp runtimes (`ctx.model ?? DEFAULT_MODEL`), but nothing could *set* it
+— a dormant column. Some tenants have harder conversations that justify a
+stronger (costlier) model; most don't.
+
+- **Technical term:** *per-tenant model selection via the existing
+  `Agent.modelOverride`, with a closed allow-list*.
+- **Plain:** A dial per customer: leave it on the cheap, fast default, or
+  turn it up to the smarter, pricier model for the ones who need it — without
+  touching anyone else or the platform default.
+- **Chosen:** `SELECTABLE_MODELS` (core) = `claude-haiku-4-5` (default) and
+  `claude-sonnet-4-6`, shared by API validation (`@IsIn`) and the dashboard
+  picker. `PUT /v1/agents/model { tenantSlug, model }` sets/clears the
+  override (null/omitted ⇒ default); `GET /v1/agents` now returns it; an
+  Agent-page selector flips it. No schema change (column already existed); no
+  runtime change (already wired).
+- **Why:** Closed allow-list, not a free string — prevents typos/unknown
+  models reaching the API and keeps cost predictable. Default stays Haiku
+  (the pricing model assumes the cheap path); Sonnet is opt-in per tenant.
+  Takes effect next message since both runtimes read the column per request.
+- **Honest scope:** Opus deliberately excluded (cost). No automatic
+  escalation/heuristics (a possible later lever); selection is manual per
+  tenant. Not yet surfaced in usage/billing rollups — model-mix cost
+  reporting is an M3 (billing) concern.
+
+---
+
+## ADR-012 — Marketing site is a separate repo; this monorepo is platform-only
+
+**Status:** Accepted · 2026-05-25. Reverses the implicit choice from ADR-001
+#8 ("marketing's copy stays untouched; consolidation is a later refactor") —
+that consolidation is **not happening**; we're going the other way.
+
+- **Context:** When the platform monorepo was bootstrapped, the existing
+  lidh.al marketing site was copied in as `apps/marketing` (commit 998cc1c,
+  2026-05-09). It hasn't been touched here since — meanwhile the canonical
+  marketing repo continued evolving. After 16 days the in-monorepo copy was
+  meaningfully behind the live site. Either we sync forever, or we accept
+  they're two different things and split them.
+- **Technical term:** *deployment-boundary separation; the marketing site
+  and the SaaS platform are independent codebases with independent CI/CD*.
+- **Plain:** They're two different products. The marketing site is a brochure
+  that changes occasionally; the platform is the app under active build.
+  Keeping them in one drawer (one repo, one CI, one deploy graph) means every
+  platform change reads the brochure and vice versa. Putting them in two
+  drawers costs nothing because nothing real connects them.
+- **Chosen:** Delete `apps/marketing/` from the platform monorepo. The
+  marketing site continues in its own repo and its own Vercel project,
+  owning the apex `lidh.al`. This monorepo deploys only `apps/dashboard`
+  (`app.lidh.al`) + `services/api` (`api.lidh.al`) + `apps/dashboard/app/demo`
+  (`demo.lidh.al`, same Vercel project as dashboard). The two systems
+  communicate only through the platform's public API — if the marketing site
+  ever needs the agent (e.g. a chat widget), it's a thin embed pointing at
+  `api.lidh.al`, plus a CORS entry.
+- **Why:**
+  - **Different deploy targets.** Marketing → Vercel static-ish. Platform →
+    Vercel + Fly + Docker + Postgres + Anthropic + Playwright. Different
+    builds, different surface, different concerns at the CI layer.
+  - **Different cadence.** Marketing changes occasionally; platform changes
+    daily. Coupling pollutes both git histories.
+  - **Different blast radius.** A bad platform deploy should never block a
+    marketing-copy fix, and vice versa.
+  - **No real shared code.** What they'd ever share is a small chat-widget
+    JS snippet — not enough to justify a shared package.
+  - **YAGNI on the cross-cutting refactor.** The "atomic refactor across
+    both" scenario hasn't happened in this codebase and isn't likely soon.
+  - **Industry norm** for SaaS at this stage: `www.x.com` and `app.x.com`
+    are different projects (Stripe, Linear, Vercel itself).
+- **Honest scope:** If a real shared design system or interactive product
+  demos that embed dashboard code ever emerge, reconsider. Reverse migration
+  is easier than forward — bringing the marketing repo *into* the monorepo
+  later is a one-time copy plus a Vercel root-directory change. The cleanup:
+  `apps/marketing/` removed; SETUP.md and diagrams pruned; comments that
+  referenced the path reworded to credit the marketing site by name.
+
+---
+
+## ADR-013 — Business membership auth + self-serve onboarding
+
+**Status:** Accepted · 2026-05-26. Closes the "Membership/team flow" that
+ADR-006 explicitly left as honest scope ("non-admin authenticated users get
+403 on admin endpoints until the Membership/team flow exists — intentional
+for M2.4").
+
+- **Context:** Until now the platform was single-operator: the only people
+  who could log into the dashboard were *you* (platform admin, via
+  `PLATFORM_ADMIN_EMAILS`). Business owners couldn't sign up, log in, or
+  see their own data — every protected route returned 403. We need real
+  multi-user signup so businesses can self-serve.
+- **Technical term:** *Clerk-hosted signup + membership-based authorization
+  + per-tenant access enforcement in service layer*.
+- **Plain:** Before, there was one front door and only the owner had a key.
+  Now anyone can sign up at the front door (Clerk handles passwords/
+  reset/MFA), and after they walk in we hand them a key to their *own
+  building* (their tenant). Each room in the building checks "is this your
+  key?" before letting them in. The owner's master key still opens
+  everything.
+- **Chosen:**
+  - **Signup UI** = Clerk-hosted `app.lidh.al/sign-up` (already configured).
+    The marketing site (`lidh.al`, separate repo per ADR-012) gets a CTA
+    that links here — no custom registration form, no password handling.
+  - **AuthGuard** (`common/auth/auth.guard.ts`) relaxed: verifies the Clerk
+    token, JIT-provisions the `User`, **loads the user's `Membership`
+    rows**, and attaches `{userId, email, isPlatformAdmin, memberships:
+    [{tenantId, role}]}` to `req.auth`. Any authenticated user passes;
+    no more universal `not_a_platform_admin` 403.
+  - **`@PlatformAdminOnly()` decorator** (`common/auth/platform-admin.decorator.ts`)
+    + check inside AuthGuard for admin-only endpoints: tenants list/create/
+    archive/reactivate/delete/graduate, persona-preset CRUD.
+  - **`assertCanAccessTenant(ctx, tenantId)` helper** (`common/auth/access.ts`)
+    reads the `TenantContext` (AsyncLocalStorage seeded from `req.auth` by
+    the existing interceptor) and throws 403 unless the user is platform
+    admin OR a member of that tenant. Called in tenant-resolving services:
+    `TenantsService.getTenant`, `AgentsService.*`, `KnowledgeService.*`,
+    `ConversationsService.*`, `LeadsService.*`.
+  - **`POST /v1/onboarding/business`** + **`GET /v1/me`** (new
+    `OnboardingModule`). `/me` returns `{user, memberships}` and drives the
+    dashboard's first-paint routing. `/onboarding/business` creates Tenant +
+    Agent + Persona(s) + web Channel + **Membership(role=owner)** for the
+    caller in a single transaction (extends `TenantsService.createTenant`
+    with an optional `ownerUserId` param so platform-admin tenant creation
+    still works without a membership).
+  - **Dashboard routing**: `(app)/layout.tsx` reads `/me` to render the nav
+    (admin sees Tenants + Persona presets; business user sees only "My
+    business" → their own tenant). `/tenants` list redirects non-admins to
+    their own tenant (or `/onboarding` if they have none). `/persona-presets`
+    redirects non-admins away. `/onboarding` redirects users who already
+    have a tenant.
+  - **WhatChimp account provisioning** = `WhatChimpTransport.provisionAccount()`
+    method (wraps WhatChimp's `user/get/direct-login-url/only-new-users`).
+    NOT triggered on signup — fired later when a tenant subscribes to the
+    WhatsApp-included plan (billing comes in M3). Building block, ready to
+    call.
+- **Why:**
+  - Clerk-hosted signup is the SaaS norm (Stripe/Vercel/Linear all do it):
+    avoids re-implementing password hashing/reset/MFA, gains free OAuth
+    later, less code surface for security bugs.
+  - The membership check lives in the service layer (not the guard) because
+    routes vary in how they identify the tenant (slug in URL, slug in query,
+    id in body) — sprinkling 2 lines after each `tenant.findUnique` is
+    cleaner than a generic guard that has to parse all those shapes. The
+    `AsyncLocalStorage` `TenantContext` was already in place from ADR-006
+    waiting for exactly this.
+  - v1 = one tenant per business user (`/onboarding/business` rejects if
+    `Membership` already exists). Multi-tenant memberships per user (team
+    invites, agencies managing many clients) is a real later feature; the
+    schema's `@@unique([userId, tenantId])` already supports many-to-many,
+    but the UI/UX of "switching tenants" isn't built.
+- **Honest scope:** No team invites yet (one user = one tenant for now,
+  no add-teammate flow). No role-gated mutations within a tenant — any
+  member can do anything on their own tenant; `admin`/`agent` roles are
+  carried but not yet enforced in business logic. Archive/delete of a
+  tenant stays platform-admin-only (a business owner can't delete their
+  own tenant via the API yet — they'd ask you). All M3 (billing) work is
+  unchanged; WhatChimp provisioning is wired but unbound.
+
+---

@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { TenantContextService } from "../common/tenant-context/tenant-context.service";
+import { assertCanAccessTenant } from "../common/auth/access";
 import type {
   ConversationListItemDto,
   ThreadDto,
@@ -9,7 +11,10 @@ import type {
  *  type leak → portable .d.ts, no TS2742). */
 @Injectable()
 export class ConversationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ctx: TenantContextService,
+  ) {}
 
   async list(
     tenantSlug: string,
@@ -18,6 +23,7 @@ export class ConversationsService {
     const db = this.prisma.client;
     const tenant = await db.tenant.findUnique({ where: { slug: tenantSlug } });
     if (!tenant) throw new NotFoundException("tenant_not_found");
+    assertCanAccessTenant(this.ctx.get(), tenant.id);
 
     const rows = await db.conversation.findMany({
       where: {
@@ -72,6 +78,7 @@ export class ConversationsService {
       },
     });
     if (!c) throw new NotFoundException("conversation_not_found");
+    assertCanAccessTenant(this.ctx.get(), c.tenantId);
     return {
       id: c.id,
       channelKind: c.channel.kind,

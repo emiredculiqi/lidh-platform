@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   Logger,
@@ -11,6 +12,8 @@ import { ApiOperation, ApiTags } from "@nestjs/swagger";
 import { Public } from "../../common/auth/public.decorator";
 import { WhatsappService } from "./whatsapp.service";
 import { InboundWebhookDto } from "./dto/inbound-webhook.dto";
+import { WhatChimpInboundDto } from "./dto/whatchimp-inbound.dto";
+import type { InboundWhatsAppMessage } from "./transport";
 
 @ApiTags("WhatsApp")
 @Public() // both routes are provider webhooks — no Clerk user
@@ -59,6 +62,48 @@ export class WhatsappController {
     void this.whatsapp.handleInbound(dto).catch((err) =>
       this.logger.error(
         `handleInbound crashed: ${err instanceof Error ? err.message : "unknown"}`,
+      ),
+    );
+    return { status: "accepted" };
+  }
+
+  @Post("whatchimp")
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Inbound WhatsApp message (WhatChimp adapter)",
+    description:
+      "Configure this URL as the webhook in WhatChimp's WhatsApp settings. " +
+      "Maps WhatChimp's payload (chat_id, user_message, whatsapp_bot_username…) " +
+      "into the provider-agnostic InboundWhatsAppMessage and acks 200 " +
+      "immediately. Optionally protect with `?token=<secret>` matching env " +
+      "`WHATCHIMP_WEBHOOK_SECRET`.",
+  })
+  whatchimp(
+    @Body() dto: WhatChimpInboundDto,
+    @Query("token") token?: string,
+  ): { status: "accepted" } {
+    const secret = process.env.WHATCHIMP_WEBHOOK_SECRET;
+    if (secret && token !== secret) {
+      throw new ForbiddenException("invalid_webhook_token");
+    }
+
+    // Normalize WhatChimp's payload into our agnostic inbound shape:
+    //  - `chat_id`               "355693113543"        → from "+355693113543"
+    //  - `whatsapp_bot_username` "+355 69 520 1250"    → businessNumber
+    //    "+355695201250" (matched against Channel.config.displayPhoneNumber)
+    const fromDigits = dto.chat_id.replace(/\D/g, "");
+    const businessNumber = dto.whatsapp_bot_username.replace(/\s+/g, "");
+    const msg: InboundWhatsAppMessage = {
+      from: fromDigits ? `+${fromDigits}` : dto.chat_id,
+      businessNumber,
+      text: dto.user_message,
+      providerMessageId: dto.wa_message_id,
+      senderName: dto.first_name,
+    };
+
+    void this.whatsapp.handleInbound(msg).catch((err) =>
+      this.logger.error(
+        `whatchimp handleInbound crashed: ${err instanceof Error ? err.message : "unknown"}`,
       ),
     );
     return { status: "accepted" };

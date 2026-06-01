@@ -12,9 +12,12 @@
 # Base image: pinned Node + corepack-managed pnpm
 # ─────────────────────────────────────────────────────────────────────────────
 FROM node:22-alpine AS base
+# NODE_ENV is intentionally NOT set to "production" here — if it were, pnpm
+# would skip devDependencies (including TypeScript), and the builder stage
+# wouldn't have `tsc` available. The runtime stage sets NODE_ENV=production
+# explicitly where it actually matters.
 ENV PNPM_HOME="/pnpm" \
-    PATH="/pnpm:$PATH" \
-    NODE_ENV=production
+    PATH="/pnpm:$PATH"
 RUN corepack enable
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -32,13 +35,13 @@ RUN pnpm dlx turbo@^2.3 prune @lidh/api --docker
 # ─────────────────────────────────────────────────────────────────────────────
 FROM base AS installer
 WORKDIR /repo
-# Skip @lidh/db's postinstall (prisma generate + tsc) here — we rebuild it
-# in the next stage with sources present anyway.
-ENV PRISMA_SKIP_POSTINSTALL_GENERATE=true
 
 COPY --from=pruner /repo/out/json/ ./
 COPY --from=pruner /repo/out/pnpm-lock.yaml ./pnpm-lock.yaml
 
+# `--ignore-scripts` skips @lidh/db's postinstall (prisma generate + tsc) here
+# because schema.prisma isn't in the install layer yet — we run it explicitly
+# in the next stage where the full source is present.
 # BuildKit cache mount keeps pnpm's content-addressed store across builds.
 RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
     pnpm install --frozen-lockfile --ignore-scripts
@@ -49,14 +52,19 @@ RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
 FROM installer AS builder
 WORKDIR /repo
 COPY --from=pruner /repo/out/full/ ./
-# Now run the postinstalls we deferred (generates prisma client + builds @lidh/db).
-RUN pnpm rebuild
-# Build @lidh/db dist + then the NestJS app dist.
+# Generate the Prisma client now that schema.prisma is in the tree. This
+# populates node_modules/.prisma/client/ with the typed PrismaClient + model
+# types that @lidh/db's src/index.ts re-exports.
+RUN pnpm --filter @lidh/db exec prisma generate
+# Build workspace deps first — @lidh/api consumes @lidh/core and @lidh/db via
+# their `dist/` output (per their package.json "main"/"types" fields).
+RUN pnpm --filter @lidh/core build
 RUN pnpm --filter @lidh/db build
 RUN pnpm --filter @lidh/api build
 
-# Strip dev dependencies for a smaller runtime image.
-RUN pnpm --filter @lidh/api... --prod deploy /deploy
+# Strip dev dependencies for a smaller runtime image. `pnpm deploy` only
+# accepts a single project; it pulls in workspace deps automatically.
+RUN pnpm --filter @lidh/api --prod deploy /deploy
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 4: runtime

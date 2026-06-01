@@ -1,6 +1,7 @@
-import { api } from "@/lib/api";
+import { api } from "@/lib/api-server";
 import { TenantNav } from "@/components/TenantNav";
 import { AddKnowledge } from "@/components/AddKnowledge";
+import { TenantLifecycle } from "@/components/TenantLifecycle";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +30,17 @@ export default async function TenantOverview({
           {tenant.name}
         </h1>
         <p className="text-sm text-brand-ink/55">
-          {tenant.slug} · {tenant.isDemo ? "demo" : "paid"} · default locale{" "}
-          {tenant.defaultLocale}
+          {tenant.slug} · {tenant.isDemo ? "demo" : "paid"} ·{" "}
+          <span
+            className={
+              tenant.status === "archived"
+                ? "font-medium text-accent-orange"
+                : "text-brand-ink/55"
+            }
+          >
+            {tenant.status}
+          </span>{" "}
+          · default locale {tenant.defaultLocale}
         </p>
       </div>
 
@@ -108,6 +118,12 @@ export default async function TenantOverview({
           </div>
         )}
       </section>
+
+      <TenantLifecycle
+        id={tenant.id}
+        slug={tenant.slug}
+        status={tenant.status}
+      />
     </div>
   );
 }

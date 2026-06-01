@@ -11,11 +11,12 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "prisma"
   ],
   "scripts": {
     "build": "tsc",
-    "postinstall": "prisma generate && tsc",
+    "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",

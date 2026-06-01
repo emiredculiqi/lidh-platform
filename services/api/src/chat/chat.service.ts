@@ -47,6 +47,12 @@ export class ChatService {
       yield { kind: "error", message: "tenant_not_found" };
       return;
     }
+    // Archived = subscription paused (ADR-008): the agent serves no one on
+    // any channel. Web widget + demo link both flow through here.
+    if (tenant.status === "archived") {
+      yield { kind: "error", message: "tenant_inactive" };
+      return;
+    }
 
     const channel = await db.channel.findUnique({
       where: { tenantId_kind: { tenantId: tenant.id, kind: "web" } },

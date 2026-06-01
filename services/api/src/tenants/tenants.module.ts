@@ -6,5 +6,7 @@ import { TenantsService } from "./tenants.service";
 @Module({
   controllers: [TenantsController],
   providers: [TenantsService],
+  // Exported so OnboardingModule can call createTenant() for self-serve signup.
+  exports: [TenantsService],
 })
 export class TenantsModule {}

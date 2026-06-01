@@ -52,4 +52,7 @@ export interface TenantContext {
    * Drives authorization checks in feature modules.
    */
   role?: "owner" | "admin" | "agent";
+  /** All tenants this user can access (ADR-013). Empty for new users who
+   *  haven't completed /onboarding; irrelevant for platform admins. */
+  memberships?: Array<{ tenantId: string; role: string }>;
 }

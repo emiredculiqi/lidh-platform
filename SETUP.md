@@ -3,9 +3,9 @@
 Everything needed to bootstrap this monorepo from a fresh machine, and which
 third-party accounts each part depends on. Keep this current as the stack grows.
 
-> Status: **M1 (foundation) complete.** Workspaces: `apps/marketing`,
-> `apps/dashboard`, `services/api`, `packages/db`. M2+ adds the agent runtime,
-> widget, and channel webhooks.
+> Status: **M1 (foundation) complete.** Workspaces: `apps/dashboard`,
+> `services/api`, `packages/core`, `packages/db`. The marketing site
+> (`lidh.al`) lives in its own repo — see ADR-012.
 
 ---
 
@@ -39,10 +39,10 @@ so the typed client is built automatically.
 |---|---|---|---|
 | **Neon** (Postgres + pgvector) | `packages/db`, `services/api` | ✅ | Project + connection string |
 | **Clerk** (auth) | `apps/dashboard` | ✅ | App + publishable & secret keys |
-| **Anthropic** (Claude) | `apps/marketing` now; `services/api` in M2 | ✅ (existing) | API key |
-| **Resend** (email) | `apps/marketing` | ✅ (existing) | API key + verified sender domain |
+| **Anthropic** (Claude) | `services/api` (the agent) | ✅ | API key |
+| **OpenAI** (embeddings) | `services/api` (RAG retrieval) | ✅ | API key |
 | **Fly.io** (API hosting) | `services/api` | deploy-time | Account + `fly auth login` |
-| **Vercel** (web hosting) | `apps/marketing`, `apps/dashboard` | deploy-time | Account, two projects, root dirs set |
+| **Vercel** (web hosting) | `apps/dashboard` | deploy-time | Account + project (root = `apps/dashboard`) |
 | **Cloudflare R2** (file storage) | knowledge file uploads | M2 | Bucket + S3 creds |
 | **Inngest** (job queue) | ingestion / usage rollups | M2 | Account + signing key |
 | **360dialog or Meta** (WhatsApp) | channel ingest | M3 | BSP account or Meta app + WABA |
@@ -80,9 +80,6 @@ DATABASE_URL=                 # optional — only for direct DB reads / webhook
 CLERK_WEBHOOK_SECRET=         # M2 — Clerk dashboard → Webhooks → signing secret
 ```
 
-### `apps/marketing/.env.local`
-Existing keys (Resend + Anthropic) — see `apps/marketing` `CLAUDE.md`.
-
 ---
 
 ## 4. Database
@@ -112,7 +109,6 @@ are applied via the `integrity_constraints` migration.
 | Command | Result |
 |---|---|
 | `pnpm dev` | Turbo runs every workspace's `dev` in parallel |
-| `pnpm --filter @lidh/marketing dev` | Marketing site → http://localhost:3000 |
 | `pnpm --filter @lidh/dashboard dev` | Dashboard → http://localhost:3001 |
 | `pnpm --filter @lidh/api dev` | API → http://localhost:4000/v1 |
 | `pnpm -r typecheck` | Typecheck all workspaces |
@@ -142,11 +138,12 @@ fly deploy
 curl https://lidh-api.fly.dev/v1/health
 ```
 
-### `apps/marketing` + `apps/dashboard` → Vercel
-Two separate Vercel projects, both pointing at this repo:
-- **Project root directory** = `apps/marketing` (resp. `apps/dashboard`)
-- Build command auto-detected; or `pnpm --filter @lidh/<app> build`
-- Set env vars in Vercel project settings (mirror the `.env` files)
+### `apps/dashboard` → Vercel
+One Vercel project, root directory = `apps/dashboard`. Build command
+auto-detected; mirror the `.env` keys in Vercel project settings.
+
+The marketing site (`lidh.al`) is a *separate* Vercel project deployed
+from its own repo — never the apex domain from this monorepo (ADR-012).
 
 ---
 
@@ -155,15 +152,19 @@ Two separate Vercel projects, both pointing at this repo:
 ```
 lidh-platform/
 ├── apps/
-│   ├── marketing/     @lidh/marketing  — lidh.al (Next.js)
 │   └── dashboard/     @lidh/dashboard  — app.lidh.al (Next.js + Clerk)
 ├── services/
 │   └── api/           @lidh/api        — api.lidh.al (NestJS + Fastify, Fly)
 ├── packages/
+│   ├── core/          @lidh/core       — framework-agnostic agent runtime
 │   └── db/            @lidh/db         — Prisma schema + migrations + client
 ├── docs/
+│   ├── decisions.md   — ADR ledger (ADR-001..012)
 │   └── diagrams.md    — architecture, ERD, flows (Mermaid)
 └── SETUP.md           — this file
 ```
+
+The marketing site (`lidh.al`) lives in a separate repo and is deployed
+as its own Vercel project; this monorepo does not include or build it.
 
 See `docs/diagrams.md` for architecture + data-model diagrams.

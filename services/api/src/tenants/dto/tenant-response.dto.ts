@@ -32,6 +32,23 @@ export class TenantResponseDto {
   })
   demoExpiresAt!: Date | null;
 
+  @ApiProperty({
+    description:
+      "Service state. `archived` = subscription paused: the agent stops " +
+      "serving on every channel, data retained, reversible via reactivate.",
+    example: "active",
+    enum: ["active", "archived"],
+  })
+  status!: string;
+
+  @ApiProperty({
+    description: "When the tenant was archived (null while active).",
+    example: null,
+    nullable: true,
+    type: String,
+  })
+  archivedAt!: Date | null;
+
   @ApiProperty({ example: "2026-05-16T12:00:00.000Z" })
   createdAt!: Date;
 }

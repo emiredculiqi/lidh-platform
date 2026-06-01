@@ -28,9 +28,9 @@ export class RetrievalService {
 
     try {
       const rows = await this.prisma.client.$queryRawUnsafe<
-        { content: string }[]
+        { content: string; meta: unknown }[]
       >(
-        `SELECT content
+        `SELECT content, meta
            FROM "KnowledgeChunk"
           WHERE "tenantId" = $1 AND embedding IS NOT NULL
           ORDER BY embedding <=> $2::vector
@@ -38,7 +38,18 @@ export class RetrievalService {
         tenantId,
         vectorLiteral,
       );
-      return rows.map((r) => r.content);
+      // Prefix each passage with its real source URL (chunk.ts stores it in
+      // meta.url for crawled pages). Without this the model never sees the
+      // URL and fabricates plausible-looking paths when asked "where / link
+      // me" — e.g. inventing /carriers instead of the real /gsl-careers/.
+      return rows.map((r) => {
+        const meta = r.meta as { url?: unknown } | null;
+        const url =
+          meta && typeof meta.url === "string" && meta.url.trim()
+            ? meta.url.trim()
+            : null;
+        return url ? `(source: ${url})\n${r.content}` : r.content;
+      });
     } catch (err) {
       this.logger.error(
         `vector search failed: ${err instanceof Error ? err.message : "unknown"}`,

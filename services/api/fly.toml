@@ -46,4 +46,6 @@ primary_region = "fra"
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
-  memory_mb = 512
+  # 1 GB so Chromium (bundled for the Tier-2 crawler escalation, ADR-005)
+  # has headroom. Smaller plans OOM the moment the browser launches.
+  memory_mb = 1024

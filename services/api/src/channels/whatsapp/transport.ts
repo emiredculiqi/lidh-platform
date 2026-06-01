@@ -28,7 +28,17 @@ export interface InboundWhatsAppMessage {
   senderName?: string;
 }
 
+/**
+ * Per-channel context the service passes when sending. Real providers need
+ * to know WHICH business number is sending (each tenant has its own); the
+ * service reads it from the resolved whatsapp Channel's config.
+ */
+export interface OutboundContext {
+  /** Meta WhatsApp Business phone_number_id (used by WhatChimp / Meta Cloud). */
+  phoneNumberId?: string;
+}
+
 export interface WhatsAppTransport {
   /** Send a free-form text reply to a customer. */
-  sendText(to: string, text: string): Promise<void>;
+  sendText(to: string, text: string, ctx?: OutboundContext): Promise<void>;
 }

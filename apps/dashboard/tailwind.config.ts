@@ -1,8 +1,8 @@
 import type { Config } from "tailwindcss";
 
-// Brand tokens mirror apps/marketing/tailwind.config.ts so the dashboard is
-// visually a member of the same family. When packages/ui lands in M2, both
-// apps will share a single Tailwind preset.
+// Brand tokens mirror the lidh.al marketing site (separate repo, ADR-012)
+// so the dashboard is visually a member of the same family. If a shared
+// packages/ui ever lands, both apps would consume a single Tailwind preset.
 const config: Config = {
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {

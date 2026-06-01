@@ -13,9 +13,14 @@ import type { WhatsAppTransport } from "./transport";
 export class StubWhatsAppTransport implements WhatsAppTransport {
   private readonly logger = new Logger("WhatsApp:Stub");
 
-  async sendText(to: string, text: string): Promise<void> {
+  async sendText(
+    to: string,
+    text: string,
+    ctx?: { phoneNumberId?: string },
+  ): Promise<void> {
     this.logger.log(
-      `OUTBOUND → ${to}: ${text.slice(0, 200)}${text.length > 200 ? "…" : ""}`,
+      `OUTBOUND → ${to}${ctx?.phoneNumberId ? ` (from ${ctx.phoneNumberId})` : ""}: ` +
+        `${text.slice(0, 200)}${text.length > 200 ? "…" : ""}`,
     );
   }
 }
