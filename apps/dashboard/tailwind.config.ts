@@ -4,7 +4,13 @@ import type { Config } from "tailwindcss";
 // so the dashboard is visually a member of the same family. If a shared
 // packages/ui ever lands, both apps would consume a single Tailwind preset.
 const config: Config = {
-  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
+  content: [
+    "./app/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    // clerk-appearance.ts passes Tailwind classes into Clerk's `elements`
+    // map; without this glob the JIT compiler purges them as unused.
+    "./lib/**/*.{ts,tsx}",
+  ],
   theme: {
     extend: {
       colors: {
