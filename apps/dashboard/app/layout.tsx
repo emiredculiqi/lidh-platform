@@ -30,7 +30,7 @@ const clerkAppearance = {
     borderRadius: "0.5rem",
   },
   layout: {
-    logoImageUrl: "/logo.png",
+    logoImageUrl: "https://app.lidh.al/logo.png",
     logoLinkUrl: "https://lidh.al",
     socialButtonsPlacement: "top" as const,
     socialButtonsVariant: "blockButton" as const,
