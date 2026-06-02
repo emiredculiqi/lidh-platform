@@ -22,11 +22,11 @@ export const clerkAppearance = {
     borderRadius: "0.5rem",
   },
   layout: {
-    // Absolute URL — relative paths sometimes resolve from the wrong origin
-    // inside Clerk's iframe/script context.
-    logoImageUrl: "https://app.lidh.al/logo.png",
-    logoLinkUrl: "https://lidh.al",
-    logoPlacement: "inside" as const,
+    // We render the Lidh.al logo OUTSIDE the Clerk card (see sign-in /
+    // sign-up pages) — Clerk 7.x's `appearance.layout.logoImageUrl` is
+    // unreliable. logoPlacement="none" hides Clerk's own logo slot so
+    // the card starts clean.
+    logoPlacement: "none" as const,
     socialButtonsPlacement: "top" as const,
     socialButtonsVariant: "blockButton" as const,
   },
