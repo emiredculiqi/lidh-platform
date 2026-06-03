@@ -18,32 +18,27 @@ export function AuthBrandPanel() {
     <aside className="relative isolate hidden overflow-hidden md:block">
       <AnimatedGradient />
 
-      <div className="relative flex h-full flex-col p-10 lg:p-14">
-        {/* Large logo centered in the panel's available space. */}
-        <Link
-          href="https://lidh.al"
-          aria-label="Lidh.al"
-          className="flex flex-1 items-center justify-center"
-        >
+      {/* Logo + tagline as one centered group in the middle of the panel. */}
+      <div className="relative flex h-full flex-col items-center justify-center gap-6 p-10 text-center lg:p-14">
+        <Link href="https://lidh.al" aria-label="Lidh.al">
           <Image
             src="/logo.png"
             alt="Lidh.al"
             width={420}
             height={420}
             priority
-            className="h-64 w-64 lg:h-96 lg:w-96"
+            className="h-64 w-64 lg:h-80 lg:w-80"
           />
         </Link>
 
-        {/* Tagline + supporting copy, bottom-left. */}
-        <div>
-          <h2 className="max-w-md font-display text-3xl font-bold leading-tight text-brand-deep lg:text-4xl">
+        <div className="max-w-lg">
+          <h2 className="font-display text-4xl font-bold leading-tight text-brand-deep lg:text-5xl">
             <T
               al="Shërbim më i mirë, menaxhim më i lehtë"
               en="Better service & smarter management"
             />
           </h2>
-          <p className="mt-4 max-w-md text-base text-brand-ink/70 lg:text-lg">
+          <p className="mt-5 text-lg text-brand-ink/70 lg:text-xl">
             <T
               al="Lidh biznesin tënd me klientët, 24/7, mos humbisni më."
               en="Connect your business with customers, 24/7, never miss another one."

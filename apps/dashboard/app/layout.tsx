@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { ClerkProvider } from "@clerk/nextjs";
 import { LocaleProvider } from "@/lib/i18n";
-import { clerkAppearance } from "@/lib/clerk-appearance";
+import { ClerkLocaleProvider } from "@/components/ClerkLocaleProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -15,26 +14,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // afterSignOutUrl: where Clerk sends the user after sign-out. Without it,
-    // sign-out leaves them on the (now unauthenticated) current route, which
-    // the middleware blocks → blank page. /sign-in is public and renders fine.
+    // LocaleProvider is OUTSIDE ClerkLocaleProvider so the latter can read the
+    // current locale (via useLocale) and pass the matching `localization` to
+    // <ClerkProvider> — Albanian by default, English when toggled. See
+    // components/ClerkLocaleProvider.tsx.
     //
-    // Clerk's prebuilt components have no Albanian localization (51 locales
-    // shipped, no `sq`). They stay in English even when locale=al. Rest of
-    // the dashboard switches via LocaleProvider + useT() bundles.
-    //
-    // <html lang> defaults to "sq" because AL is the default locale; the
-    // LocaleProvider rewrites it client-side if the user toggles to EN.
-    //
-    // `appearance` is also re-passed on <SignIn>/<SignUp> directly (see
-    // lib/clerk-appearance.ts) — Clerk 7.x's prop propagation is unreliable
-    // in production builds.
-    <ClerkProvider afterSignOutUrl="/sign-in" appearance={clerkAppearance}>
-      <html lang="sq">
-        <body className="min-h-screen antialiased">
-          <LocaleProvider>{children}</LocaleProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+    // <html lang> defaults to "sq" (AL is the default locale); LocaleProvider
+    // rewrites it client-side if the user toggles to EN.
+    <LocaleProvider>
+      <ClerkLocaleProvider>
+        <html lang="sq">
+          <body className="min-h-screen antialiased">{children}</body>
+        </html>
+      </ClerkLocaleProvider>
+    </LocaleProvider>
   );
 }

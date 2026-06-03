@@ -6,8 +6,8 @@ import { motion } from "framer-motion";
  * Decorative animated background using brand colors. Four blurred discs of
  * different sizes orbit independently and cycle hue across the brand palette
  * (#0B2A6B / #1E5FDB / #22D3EE / #5EEAD4), composited with `mix-blend-multiply`
- * onto a soft brand-blue-to-mint base. Fades to brand-fog at the bottom so it
- * blends into the rest of the page without a hard edge.
+ * onto a soft brand-blue-to-mint base. Disc orbits span the full height so
+ * color reaches the bottom of the panel, not just the vertical center.
  *
  * Usage — parent must be `relative` and (usually) `overflow-hidden`:
  *
@@ -50,7 +50,7 @@ export function AnimatedGradient() {
         animate={{
           backgroundColor: ["#1E5FDB", "#22D3EE", "#5EEAD4", "#1E5FDB"],
           x: [0, 260, 220, -180, -240, 0],
-          y: [-220, -120, 140, 180, -40, -220],
+          y: [-260, -120, 220, 300, -40, -260],
         }}
         transition={{ duration: 18, repeat: Infinity, ease: "easeInOut" }}
       />
@@ -81,13 +81,12 @@ export function AnimatedGradient() {
         initial={{ backgroundColor: "#22D3EE" }}
         animate={{
           backgroundColor: ["#22D3EE", "#1E5FDB", "#5EEAD4", "#22D3EE"],
-          x: [-180, 200, 60, -220, -180],
-          y: [-60, 100, 220, 40, -60],
+          x: [-220, 180, 80, -240, -220],
+          y: [120, -80, 300, 220, 120],
         }}
         transition={{ duration: 16, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-b from-transparent to-brand-fog" />
     </div>
   );
 }
