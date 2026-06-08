@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import { LocaleProvider } from "@/lib/i18n";
-import { ClerkLocaleProvider } from "@/components/ClerkLocaleProvider";
+import { clerkAppearance } from "@/lib/clerk-appearance";
+import { clerkAlbanian } from "@/lib/clerk-localization-al";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -14,19 +16,26 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // LocaleProvider is OUTSIDE ClerkLocaleProvider so the latter can read the
-    // current locale (via useLocale) and pass the matching `localization` to
-    // <ClerkProvider> — Albanian by default, English when toggled. See
-    // components/ClerkLocaleProvider.tsx.
+    // ClerkProvider stays the OUTERMOST, server-rendered wrapper (the
+    // documented App Router pattern). Rendering <html>/<body> from a server
+    // layout — not from inside client providers — avoids SSR/hydration 500s.
     //
-    // <html lang> defaults to "sq" (AL is the default locale); LocaleProvider
-    // rewrites it client-side if the user toggles to EN.
-    <LocaleProvider>
-      <ClerkLocaleProvider>
-        <html lang="sq">
-          <body className="min-h-screen antialiased">{children}</body>
-        </html>
-      </ClerkLocaleProvider>
-    </LocaleProvider>
+    // Clerk's own components (SignIn/SignUp/UserButton) are localized to
+    // Albanian unconditionally: AL is the platform default, and Clerk has no
+    // built-in `sq`, so we pass our hand-authored pack. The EN toggle still
+    // switches the rest of the dashboard (LocaleProvider + useT); it just
+    // doesn't re-localize Clerk's ~3 components (acceptable tradeoff vs. the
+    // fragility of a client-side ClerkProvider).
+    <ClerkProvider
+      afterSignOutUrl="/sign-in"
+      appearance={clerkAppearance}
+      localization={clerkAlbanian}
+    >
+      <html lang="sq">
+        <body className="min-h-screen antialiased">
+          <LocaleProvider>{children}</LocaleProvider>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

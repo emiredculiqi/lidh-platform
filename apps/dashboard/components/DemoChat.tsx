@@ -24,6 +24,16 @@ export function DemoChat({
   const sessionRef = useRef(
     `demo-${Math.random().toString(36).slice(2)}`,
   );
+  const taRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-grow the textarea up to ~5 lines, then scroll. Reset to one row
+  // after sending (handled in submitMessage via setInput("")).
+  function autoGrow() {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+  }
 
   const t = useT({
     al: {
@@ -42,11 +52,27 @@ export function DemoChat({
     },
   });
 
-  async function send(e: React.FormEvent) {
+  function send(e: React.FormEvent) {
     e.preventDefault();
+    void submitMessage();
+  }
+
+  // Enter sends; Shift+Enter inserts a newline (standard chat behavior).
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void submitMessage();
+    }
+  }
+
+  async function submitMessage() {
     const message = input.trim();
     if (!message || busy) return;
     setInput("");
+    // Collapse the textarea back to a single row after sending.
+    requestAnimationFrame(() => {
+      if (taRef.current) taRef.current.style.height = "auto";
+    });
     setMsgs((m) => [...m, { role: "user", text: message }]);
     setBusy(true);
     let assistant = "";
@@ -138,13 +164,19 @@ export function DemoChat({
       </div>
       <form
         onSubmit={send}
-        className="flex gap-2 border-t border-brand-ink/10 p-3"
+        className="flex items-end gap-2 border-t border-brand-ink/10 p-3"
       >
-        <input
+        <textarea
+          ref={taRef}
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(e) => {
+            setInput(e.target.value);
+            autoGrow();
+          }}
+          onKeyDown={onKeyDown}
+          rows={1}
           placeholder={t.messagePlaceholder}
-          className="flex-1 rounded-lg border border-brand-ink/15 px-3 py-2 text-sm"
+          className="flex-1 resize-none rounded-lg border border-brand-ink/15 px-3 py-2 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-brand-blue/20"
         />
         <button
           disabled={busy}

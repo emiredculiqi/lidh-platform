@@ -83,53 +83,65 @@ export class AuthGuard implements CanActivate {
     const db = this.prisma.client;
     let user = await db.user.findUnique({ where: { clerkId } });
 
-    // JIT provisioning: first verified request for this clerkId.
+    // JIT provisioning: first verified request for this clerkId. Wrapped so
+    // a Clerk-API failure (e.g. the token verifies against the instance's
+    // JWKS but the user isn't fetchable, or a network error) surfaces as a
+    // logged, explicit auth error instead of an opaque 500.
     if (!user) {
-      const cu = await this.clerk.users.getUser(clerkId);
-      const email =
-        cu.emailAddresses.find((e) => e.id === cu.primaryEmailAddressId)
-          ?.emailAddress ??
-        cu.emailAddresses[0]?.emailAddress ??
-        `${clerkId}@no-email.local`;
-      const name =
-        [cu.firstName, cu.lastName].filter(Boolean).join(" ") || null;
-      user = await db.user.create({
-        data: {
-          clerkId,
-          email,
-          name,
-          imageUrl: cu.imageUrl ?? null,
-          isPlatformAdmin: this.isAdminEmail(email),
-        },
-      });
-      this.logger.log(`JIT-provisioned user ${email} (clerkId=${clerkId})`);
+      try {
+        const cu = await this.clerk.users.getUser(clerkId);
+        const email =
+          cu.emailAddresses.find((e) => e.id === cu.primaryEmailAddressId)
+            ?.emailAddress ??
+          cu.emailAddresses[0]?.emailAddress ??
+          `${clerkId}@no-email.local`;
+        const name =
+          [cu.firstName, cu.lastName].filter(Boolean).join(" ") || null;
+        user = await db.user.create({
+          data: {
+            clerkId,
+            email,
+            name,
+            imageUrl: cu.imageUrl ?? null,
+            isPlatformAdmin: this.isAdminEmail(email),
+          },
+        });
+        this.logger.log(`JIT-provisioned user ${email} (clerkId=${clerkId})`);
 
-      // ADR-015: bind any tenants the admin pre-assigned to this email.
-      // Case-insensitive match — emails are case-insensitive per RFC, and
-      // admins typing into a form will mix-case unpredictably.
-      const pending = await db.tenant.findMany({
-        where: { pendingOwnerEmail: { equals: email, mode: "insensitive" } },
-        select: { id: true, slug: true },
-      });
-      if (pending.length > 0) {
-        await db.$transaction([
-          db.membership.createMany({
-            data: pending.map((t) => ({
-              userId: user!.id,
-              tenantId: t.id,
-              role: "owner" as const,
-            })),
-            skipDuplicates: true,
-          }),
-          db.tenant.updateMany({
-            where: { id: { in: pending.map((t) => t.id) } },
-            data: { pendingOwnerEmail: null },
-          }),
-        ]);
-        this.logger.log(
-          `bound ${pending.length} pending tenant(s) to ${email}: ` +
-            pending.map((t) => t.slug).join(", "),
+        // ADR-015: bind any tenants the admin pre-assigned to this email.
+        // Case-insensitive — emails are case-insensitive per RFC and admins
+        // type mixed case into the form.
+        const pending = await db.tenant.findMany({
+          where: { pendingOwnerEmail: { equals: email, mode: "insensitive" } },
+          select: { id: true, slug: true },
+        });
+        if (pending.length > 0) {
+          await db.$transaction([
+            db.membership.createMany({
+              data: pending.map((t) => ({
+                userId: user!.id,
+                tenantId: t.id,
+                role: "owner" as const,
+              })),
+              skipDuplicates: true,
+            }),
+            db.tenant.updateMany({
+              where: { id: { in: pending.map((t) => t.id) } },
+              data: { pendingOwnerEmail: null },
+            }),
+          ]);
+          this.logger.log(
+            `bound ${pending.length} pending tenant(s) to ${email}: ` +
+              pending.map((t) => t.slug).join(", "),
+          );
+        }
+      } catch (err) {
+        this.logger.error(
+          `JIT provisioning failed for clerkId=${clerkId}: ${
+            err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+          }`,
         );
+        throw new UnauthorizedException("user_provisioning_failed");
       }
     }
 
