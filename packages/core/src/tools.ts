@@ -59,9 +59,78 @@ const ALL_TOOLS: Record<ToolName, Anthropic.Tool> = {
       required: ["reason", "summary"],
     },
   },
+  // Real-estate vertical (ADR-016). Server-executed against the structured
+  // Property table — exact filtering + a "nearest area" fallback the shell
+  // computes. Returns matches WITH their canonical listing URLs so the model
+  // can hand the visitor a verbatim link.
+  search_properties: {
+    name: "search_properties",
+    description:
+      "Search this agency's real-estate listings by structured criteria and " +
+      "get back matching properties, each WITH its exact listing-page URL. " +
+      "Call this whenever the visitor is looking for a property, asks what's " +
+      "available, or refines their preferences. Pass ONLY the filters the " +
+      "visitor has actually expressed — omit everything else. If there is no " +
+      "exact match the tool automatically returns the nearest alternatives " +
+      "(nearby areas / closest options); when it does, tell the visitor these " +
+      "are alternatives, not exact matches. Always show each result's URL " +
+      "exactly as returned; never invent or alter a link.",
+    input_schema: {
+      type: "object",
+      properties: {
+        listingType: {
+          type: "string",
+          enum: ["sale", "rent"],
+          description:
+            "Buy vs rent. Albanian cues: 'me qera'/'qera' = rent; " +
+            "'shitje'/'në shitje'/'blej' = sale.",
+        },
+        city: {
+          type: "string",
+          description: "City, e.g. 'Tiranë' or 'Durrës'.",
+        },
+        area: {
+          type: "string",
+          description:
+            "Neighborhood / zone if named, e.g. 'Pazari i Ri', 'Bllok', 'Ali Demi'.",
+        },
+        propertyType: {
+          type: "string",
+          description:
+            "Category if specified, e.g. 'Apartament', 'Vile', 'Magazine', 'Zyrë', 'Tokë', 'Dyqan'.",
+        },
+        minPrice: { type: "number", description: "Minimum price in EUR." },
+        maxPrice: {
+          type: "number",
+          description: "Maximum price / budget in EUR.",
+        },
+        bedrooms: {
+          type: "number",
+          description: "Desired bedrooms (treated as a minimum).",
+        },
+        bathrooms: {
+          type: "number",
+          description: "Desired bathrooms (treated as a minimum).",
+        },
+        minAreaSqm: {
+          type: "number",
+          description: "Minimum area in square meters.",
+        },
+        maxAreaSqm: {
+          type: "number",
+          description: "Maximum area in square meters.",
+        },
+      },
+      required: [],
+    },
+  },
 };
 
-const TOOL_ORDER: ToolName[] = ["capture_lead", "request_human_handoff"];
+const TOOL_ORDER: ToolName[] = [
+  "capture_lead",
+  "request_human_handoff",
+  "search_properties",
+];
 
 export function buildTools(enabled: ToolName[]): Anthropic.Tool[] {
   const set = new Set(enabled);

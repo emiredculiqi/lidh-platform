@@ -9,6 +9,10 @@ import {
 } from "@lidh/core";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { RetrievalService } from "./retrieval.service";
+import {
+  PropertySearchService,
+  type PropertyFilters,
+} from "./property-search.service";
 import type { ChatWebRequestDto } from "./dto/chat-web-request.dto";
 
 /** Client-facing stream events (controller maps these to SSE). `usage` is
@@ -20,7 +24,11 @@ export type ChatStreamEvent =
   | { kind: "done" }
   | { kind: "error"; message: string };
 
-const ALL_TOOLS: ToolName[] = ["capture_lead", "request_human_handoff"];
+// Default-on tools (opt-out: included unless explicitly set false on the
+// tenant's Agent.toolsEnabled). The vertical tool `search_properties` is NOT
+// here — it's opt-IN (see OPT_IN_TOOLS) so only real-estate tenants get it.
+const DEFAULT_ON_TOOLS: ToolName[] = ["capture_lead", "request_human_handoff"];
+const OPT_IN_TOOLS: ToolName[] = ["search_properties"];
 
 @Injectable()
 export class ChatService {
@@ -29,6 +37,7 @@ export class ChatService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly retrieval: RetrievalService,
+    private readonly propertySearch: PropertySearchService,
   ) {}
 
   /**
@@ -296,6 +305,18 @@ export class ChatService {
           };
         }
 
+        if (inv.name === "search_properties") {
+          // Read-only structured search over the tenant's Property inventory.
+          // The model passes typed filters; the service returns a compact,
+          // model-ready text block (with verbatim listing URLs + a header
+          // saying whether results are exact or widened alternatives).
+          const result = await this.propertySearch.search(
+            tenantId,
+            coercePropertyFilters(inv.input),
+          );
+          return { result };
+        }
+
         return { result: `Unknown tool: ${inv.name}` };
       } catch (err) {
         this.logger.error(
@@ -311,10 +332,42 @@ export class ChatService {
 }
 
 function parseToolsEnabled(value: unknown): ToolName[] {
-  if (!value || typeof value !== "object") return ALL_TOOLS;
+  if (!value || typeof value !== "object") return DEFAULT_ON_TOOLS;
   const obj = value as Record<string, unknown>;
-  const enabled = ALL_TOOLS.filter((t) => obj[t] !== false);
-  return enabled.length ? enabled : ALL_TOOLS;
+  // Default-on tools are included unless explicitly disabled.
+  const enabled = DEFAULT_ON_TOOLS.filter((t) => obj[t] !== false);
+  // Opt-in tools (vertical) only when explicitly enabled.
+  for (const t of OPT_IN_TOOLS) if (obj[t] === true) enabled.push(t);
+  return enabled.length ? enabled : DEFAULT_ON_TOOLS;
+}
+
+/** Coerce the model's free-form tool input into typed PropertyFilters,
+ *  dropping empties and clamping numbers so a bad value can't break the SQL. */
+function coercePropertyFilters(input: Record<string, unknown>): PropertyFilters {
+  const str = (v: unknown): string | undefined => {
+    const s = typeof v === "string" ? v.trim() : "";
+    return s.length ? s : undefined;
+  };
+  const num = (v: unknown): number | undefined => {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
+  const listingType =
+    input.listingType === "sale" || input.listingType === "rent"
+      ? input.listingType
+      : undefined;
+  return {
+    listingType,
+    city: str(input.city),
+    area: str(input.area),
+    propertyType: str(input.propertyType),
+    minPrice: num(input.minPrice),
+    maxPrice: num(input.maxPrice),
+    bedrooms: num(input.bedrooms),
+    bathrooms: num(input.bathrooms),
+    minAreaSqm: num(input.minAreaSqm),
+    maxAreaSqm: num(input.maxAreaSqm),
+  };
 }
 
 function readBusinessFacts(settings: unknown): string {

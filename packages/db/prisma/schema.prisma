@@ -96,6 +96,12 @@ enum ConversationKind {
   preview
 }
 
+// Whether a property is for sale or for rent (ADR-016 real-estate vertical).
+enum PropertyListingType {
+  sale
+  rent
+}
+
 // Tenant service state (ADR-008). `archived` = subscription paused: the agent
 // stops serving end-customers on every channel, but all data is retained and
 // the dashboard stays readable so the operator can review/export. Reversible
@@ -220,6 +226,7 @@ model Tenant {
   leads            Lead[]
   events           Event[]
   usageDaily       UsageDaily[]
+  properties       Property[]
 
   @@index([planId])
   @@index([pendingOwnerEmail])
@@ -552,4 +559,60 @@ model UsageDaily {
   @@unique([tenantId, date, channel])
   @@index([tenantId, date(sort: Desc)])
   @@index([tenantId, channel, date])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Property — structured real-estate inventory (ADR-016)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The real-estate vertical needs precise, structured search (filter by city,
+// price, size, rooms, baths; "nearest area" fallback) that semantic RAG over
+// KnowledgeChunk cannot do. Each Property is one listing with typed columns,
+// scoped per tenant, and a canonical `sourceUrl` so the agent can hand the
+// visitor an exact, verbatim link. Populated by a per-source ingest (e.g. the
+// Houzez scraper) rather than the prose crawler. The `search_properties` agent
+// tool queries this table.
+model Property {
+  id         String @id @default(cuid())
+  tenantId   String
+  // Stable per-listing id from the source system (e.g. Houzez "B221258").
+  // Unique per tenant so re-ingests upsert instead of duplicating.
+  externalId String
+
+  title        String
+  listingType  PropertyListingType // sale | rent
+  propertyType String // free-text category from source, e.g. "Apartamente", "Vile", "Magazina"
+
+  // Location. `city` + `area` (neighborhood/zone) drive filtering and the
+  // city-adjacency "nearest area" fallback. lat/lng kept nullable for a future
+  // true-distance upgrade; not populated in the v1 Houzez ingest.
+  city    String
+  area    String?
+  address String?
+  lat     Float?
+  lng     Float?
+
+  priceEur    Int?
+  bedrooms    Int?
+  bathrooms   Int?
+  areaSqm     Int?
+  floor       Int?
+  description String?
+
+  sourceUrl String // canonical per-property detail page (handed to the visitor verbatim)
+  photoUrl  String?
+
+  // Listing availability. Re-ingest marks delisted properties; search filters
+  // to `available` so sold/rented units aren't surfaced.
+  status String @default("available")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId, status, city, listingType])
+  @@index([tenantId, status, listingType, priceEur])
+  @@index([tenantId, status, bedrooms])
 }
