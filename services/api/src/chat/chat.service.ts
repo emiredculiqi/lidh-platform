@@ -190,6 +190,7 @@ export class ChatService {
       tenant.id,
       conversation.id,
       conversation.contactId,
+      locale,
     );
 
     // ── Run the agent; stream + accumulate for persistence ────────────────
@@ -249,6 +250,7 @@ export class ChatService {
     tenantId: string,
     conversationId: string,
     contactId: string,
+    locale: string,
   ) {
     const db = this.prisma.client;
     return async (inv: ToolInvocation): Promise<ToolOutcome> => {
@@ -313,6 +315,7 @@ export class ChatService {
           const result = await this.propertySearch.search(
             tenantId,
             coercePropertyFilters(inv.input),
+            locale,
           );
           return { result };
         }
