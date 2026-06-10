@@ -41,6 +41,47 @@ async function fetchText(url: string): Promise<string | null> {
   }
 }
 
+// Map English product name/category tokens -> Albanian use-case keywords, so
+// natural Albanian queries ("kundër rrudhave, lëkurë e thatë") embed close to
+// the (English-named) products. Without this, RAG matches on the wrong items.
+const KEYWORDS: [RegExp, string][] = [
+  [/anti.?ag|wrinkle|rrudh|powerlift|\blift|racine|firming|regener/, "kundër rrudhave, antirrudhë, anti-plakje, elasticitet, lëkurë e re"],
+  [/serum/, "serum"],
+  [/\beye|eye.?cream|sy[ts]\b/, "për sytë, kontur syri, qese nën sy"],
+  [/cream|krem|lotion|balm|cstem|moistur/, "krem, hidratues"],
+  [/face|facial|fytyr/, "për fytyrën, fytyrë"],
+  [/body|trup/, "për trupin, trup"],
+  [/\bhand|duar/, "për duart"],
+  [/lip|buz/, "për buzët, buzë"],
+  [/skin.?care|skin|lëkur|lekur|derma/, "kujdes për lëkurën, për lëkurën"],
+  [/cleans|wash|larje|pastr|peeling|scrub/, "pastrim, larje fytyre, peeling"],
+  [/hydrat|moistur|aloe|hidrat|\bgel/, "hidratim, për lëkurë të thatë"],
+  [/\bdry\b|thate|thatë/, "për lëkurë të thatë"],
+  [/oily|sebum|yndyr/, "për lëkurë të yndyrshme"],
+  [/sensitiv|ndjesh/, "për lëkurë të ndjeshme"],
+  [/perfume|fragrance|cologne|parfum|eau de|scent/, "parfum, aromë, erë e mirë"],
+  [/women|woman|femme|female|\bher\b|femra|grua/, "për femra, grua"],
+  [/\bmen\b|\bman\b|homme|male|\bhim\b|meshkuj|burra/, "për meshkuj, burra"],
+  [/deodor|anti.?perspir|djers/, "deodorant, kundër djersës"],
+  [/shav|rroj/, "rrojë, për rroje"],
+  [/hair|shampoo|flok|shampo/, "për flokët, flokë, shampo"],
+  [/\bsun|spf|\buv\b|diell/, "mbrojtje nga dielli, diell"],
+  [/vitamin|supplement|nutrition|fitness|drink|protein|fiber|figu|active|capsule|powder|kapsul/, "vitamina, suplemente, ushqim shëndetësor, energji, dietë"],
+  [/tooth|dental|oral|dhëmb|dhemb/, "dhëmbë, kujdes oral"],
+  [/mask|mask[eë]/, "maskë fytyre"],
+  [/microsilver|silver|argjend/, "mikroargjend, antibakterial"],
+  [/foot|feet|këmb|kemb/, "për këmbët"],
+  [/night|nat[eë]/, "kujdes nate"],
+];
+
+/** Albanian use-case keywords inferred from a product's name + category path. */
+function albanianKeywords(name: string, category: string, url: string): string {
+  const hay = `${name} ${category} ${url}`.toLowerCase();
+  const out = new Set<string>();
+  for (const [re, terms] of KEYWORDS) if (re.test(hay)) out.add(terms);
+  return [...out].join(", ");
+}
+
 /** Turn a product URL path into readable category words for better matching.
  *  ".../cosmetics/skin-care/cream/serox-serum/" -> "cosmetics, skin care, cream" */
 function categoryFromUrl(url: string): string {
@@ -135,12 +176,18 @@ async function main(): Promise<void> {
 
     // One chunk per product. The URL is in BOTH meta.url (retrieval prefixes
     // "(source: <url>)") and the content (so the model can cite it verbatim).
-    const contents = products.map(
-      (p) =>
+    // Front-load the Albanian use-case keywords so an attribute-only query
+    // ("për fytyrë, kundër rrudhave, lëkurë e thatë") embeds close to the
+    // (English-named) product instead of drifting to nutrition items.
+    const contents = products.map((p) => {
+      const kw = albanianKeywords(p.name, p.category, p.url);
+      return (
+        `${kw ? `${kw}. ` : ""}` +
         `${p.name}.${p.category ? ` Kategoria: ${p.category}.` : ""}` +
         `${p.price ? ` Çmimi: €${p.price}.` : ""} ` +
-        `Produkt nga ${tenant.name}. Lidhja te produkti: ${p.url}`,
-    );
+        `Produkt nga ${tenant.name}. Lidhja te produkti: ${p.url}`
+      );
+    });
 
     console.log("Embedding…");
     const vectors = await embed(contents);

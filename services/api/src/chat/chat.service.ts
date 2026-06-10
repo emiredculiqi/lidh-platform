@@ -167,9 +167,19 @@ export class ChatService {
     });
 
     // ── RAG retrieval (shell-side) ────────────────────────────────────────
+    // Use the last couple of user turns as context so a short follow-up
+    // ("for my face, anti-wrinkle") still retrieves against what the visitor
+    // asked for earlier in the thread ("a cream") — otherwise the attribute-
+    // only message embeds poorly and matches the wrong products.
+    const recentUserText = history
+      .filter((m) => m.role === "user")
+      .slice(-2)
+      .map((m) => m.content)
+      .join(" ");
+    const retrievalQuery = `${recentUserText} ${dto.message}`.trim().slice(0, 1000);
     const knowledgeChunks = await this.retrieval.retrieve(
       tenant.id,
-      dto.message,
+      retrievalQuery,
     );
 
     // ── Build core context ───────────────────────────────────────────────
