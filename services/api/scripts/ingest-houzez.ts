@@ -75,19 +75,26 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Collect every property URL from the WP property sitemaps, keep only the
  *  cities we ingest (by URL-slug suffix). */
 async function enumerateUrls(): Promise<{ url: string; city: string }[]> {
-  const out: { url: string; city: string }[] = [];
+  // WP sitemaps are ordered OLDEST -> NEWEST (page 1 = oldest). We parse each
+  // <url> block for <loc> + <lastmod>, then sort by lastmod DESC so the caller
+  // ingests the most recently published listings — the agency's current
+  // inventory — not stale 2021-era ones.
+  const all: { url: string; city: string; lastmod: string }[] = [];
   for (let i = 1; i <= 10; i++) {
     const sm = `${BASE}/wp-sitemap-posts-property-${i}.xml`;
     const xml = await fetchText(sm);
     if (!xml) break; // no more sitemap pages
-    const locs = xml.match(/<loc>([^<]+)<\/loc>/g) ?? [];
-    for (const loc of locs) {
-      const url = loc.replace(/<\/?loc>/g, "").trim();
+    const blocks = xml.match(/<url>[\s\S]*?<\/url>/g) ?? [];
+    for (const b of blocks) {
+      const url = b.match(/<loc>([^<]+)<\/loc>/)?.[1]?.trim();
+      const lastmod = b.match(/<lastmod>([^<]+)<\/lastmod>/)?.[1]?.trim() ?? "";
+      if (!url) continue;
       const m = url.match(/-(tirane|durres)\/?$/i);
-      if (m) out.push({ url, city: CITY_BY_SLUG[m[1].toLowerCase()] });
+      if (m) all.push({ url, city: CITY_BY_SLUG[m[1].toLowerCase()], lastmod });
     }
   }
-  return out;
+  all.sort((a, b) => b.lastmod.localeCompare(a.lastmod)); // newest first
+  return all.map(({ url, city }) => ({ url, city }));
 }
 
 // Parse the FIRST number token in a string, treating , and . as thousands
