@@ -12,7 +12,7 @@
  *   TENANT_SLUG=shpresa-beauty BASE_URL=https://shpresabeauty.com \
  *     packages/db/node_modules/.bin/tsx services/api/scripts/ingest-cscart-products.ts
  */
-import { PrismaClient, Prisma } from "@lidh/db";
+import { PrismaClient } from "@lidh/db";
 import * as cheerio from "cheerio";
 
 const TENANT_SLUG = process.env.TENANT_SLUG ?? "shpresa-beauty";
@@ -29,6 +29,7 @@ interface Product {
   name: string;
   url: string;
   category: string;
+  price: string | null; // formatted "75.34"
 }
 
 async function fetchText(url: string): Promise<string | null> {
@@ -65,11 +66,30 @@ async function enumerateProducts(): Promise<Product[]> {
     const $ = cheerio.load(html);
     const before = map.size;
     $("a.product-title").each((_, a) => {
-      const href = ($(a).attr("href") ?? "").trim();
-      const name = $(a).text().trim().replace(/\s+/g, " ");
-      if (href && name && !map.has(href)) {
-        map.set(href, { name, url: href, category: categoryFromUrl(href) });
+      const $a = $(a);
+      const href = ($a.attr("href") ?? "").trim();
+      const name = $a.text().trim().replace(/\s+/g, " ");
+      if (!href || !name || map.has(href)) return;
+      // CS-Cart price: "<span>75<sup>34</sup></span>" => 75.34 (sup = cents).
+      const card = $a.closest(".ty-grid-list__item");
+      const pe = card
+        .find("span[id^='sec_discounted_price'], span[id^='sec_price']")
+        .first();
+      let price: string | null = null;
+      if (pe.length) {
+        const cents = pe.find("sup").first().text().replace(/[^\d]/g, "");
+        const intPart = pe
+          .clone()
+          .find("sup")
+          .remove()
+          .end()
+          .text()
+          .replace(/[^\d]/g, "");
+        if (intPart) {
+          price = cents ? `${intPart}.${cents.padStart(2, "0")}` : intPart;
+        }
       }
+      map.set(href, { name, url: href, category: categoryFromUrl(href), price });
     });
     await sleep(300);
     if (map.size === before) break; // no new products -> reached the end
@@ -117,7 +137,8 @@ async function main(): Promise<void> {
     // "(source: <url>)") and the content (so the model can cite it verbatim).
     const contents = products.map(
       (p) =>
-        `${p.name}.${p.category ? ` Kategoria: ${p.category}.` : ""} ` +
+        `${p.name}.${p.category ? ` Kategoria: ${p.category}.` : ""}` +
+        `${p.price ? ` Çmimi: €${p.price}.` : ""} ` +
         `Produkt nga ${tenant.name}. Lidhja te produkti: ${p.url}`,
     );
 
