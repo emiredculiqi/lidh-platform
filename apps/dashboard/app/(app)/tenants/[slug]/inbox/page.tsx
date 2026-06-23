@@ -2,6 +2,7 @@ import Link from "next/link";
 import { api } from "@/lib/api-server";
 import { TenantNav } from "@/components/TenantNav";
 import { T } from "@/components/T";
+import { formatDateTime } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export default async function InboxPage({
                 <div>
                   {c.messageCount} <T al="mesazhe" en="msgs" />
                 </div>
-                <div>{new Date(c.lastMsgAt).toLocaleString()}</div>
+                <div>{formatDateTime(c.lastMsgAt)}</div>
               </div>
             </Link>
           ))}

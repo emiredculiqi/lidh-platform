@@ -97,8 +97,21 @@ export class AuthGuard implements CanActivate {
           `${clerkId}@no-email.local`;
         const name =
           [cu.firstName, cu.lastName].filter(Boolean).join(" ") || null;
-        user = await db.user.create({
-          data: {
+        // Upsert by EMAIL (the stable identity), not a blind create: the same
+        // person can have a DIFFERENT clerkId across Clerk instances — e.g. a
+        // dev/test instance on localhost vs the live instance on the prod
+        // domain — while sharing ONE database. A create would then collide on
+        // the User.email unique constraint and fail ("user_provisioning_failed").
+        // Upserting relinks the existing row to the current clerkId instead.
+        user = await db.user.upsert({
+          where: { email },
+          update: {
+            clerkId,
+            name,
+            imageUrl: cu.imageUrl ?? null,
+            isPlatformAdmin: this.isAdminEmail(email),
+          },
+          create: {
             clerkId,
             email,
             name,
@@ -106,7 +119,9 @@ export class AuthGuard implements CanActivate {
             isPlatformAdmin: this.isAdminEmail(email),
           },
         });
-        this.logger.log(`JIT-provisioned user ${email} (clerkId=${clerkId})`);
+        this.logger.log(
+          `JIT-provisioned/linked user ${email} (clerkId=${clerkId})`,
+        );
 
         // ADR-015: bind any tenants the admin pre-assigned to this email.
         // Case-insensitive — emails are case-insensitive per RFC and admins

@@ -3,6 +3,7 @@ import { ConfigModule } from "@nestjs/config";
 import { PrismaModule } from "./common/prisma/prisma.module";
 import { EmbeddingModule } from "./common/embedding/embedding.module";
 import { StorageModule } from "./common/storage/storage.module";
+import { MailModule } from "./common/mail/mail.module";
 import { AuthModule } from "./common/auth/auth.module";
 import { TenantContextModule } from "./common/tenant-context/tenant-context.module";
 import { HealthModule } from "./health/health.module";
@@ -15,6 +16,7 @@ import { AgentsModule } from "./agents/agents.module";
 import { WhatsappModule } from "./channels/whatsapp/whatsapp.module";
 import { PersonaPresetsModule } from "./persona-presets/persona-presets.module";
 import { OnboardingModule } from "./onboarding/onboarding.module";
+import { UsageModule } from "./usage/usage.module";
 
 @Module({
   imports: [
@@ -27,6 +29,7 @@ import { OnboardingModule } from "./onboarding/onboarding.module";
     PrismaModule,
     EmbeddingModule,
     StorageModule,
+    MailModule,
     AuthModule,
     TenantContextModule,
     HealthModule,
@@ -39,6 +42,7 @@ import { OnboardingModule } from "./onboarding/onboarding.module";
     WhatsappModule,
     PersonaPresetsModule,
     OnboardingModule,
+    UsageModule,
   ],
 })
 export class AppModule {}

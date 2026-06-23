@@ -8,6 +8,8 @@ const TABS = [
   { href: "/agent", key: "agent" as const },
   { href: "/inbox", key: "inbox" as const },
   { href: "/leads", key: "leads" as const },
+  { href: "/usage", key: "usage" as const },
+  { href: "/developer", key: "developer" as const },
   { href: "/test", key: "test" as const },
 ];
 
@@ -24,6 +26,8 @@ export function TenantNav({
       agent: "Agjenti",
       inbox: "Mesazhet",
       leads: "Klientë potencialë",
+      usage: "Përdorimi",
+      developer: "Integrimi",
       test: "Testo agjentin",
     },
     en: {
@@ -31,6 +35,8 @@ export function TenantNav({
       agent: "Agent",
       inbox: "Inbox",
       leads: "Leads",
+      usage: "Usage",
+      developer: "Developers",
       test: "Test agent",
     },
   });

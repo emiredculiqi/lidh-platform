@@ -2,6 +2,7 @@ import Link from "next/link";
 import { api } from "@/lib/api-server";
 import { Markdown } from "@/components/Markdown";
 import { T } from "@/components/T";
+import { formatTime } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -77,7 +78,7 @@ export default async function ThreadPage({
                     isUser ? "text-brand-ink/40" : "text-white/60"
                   }`}
                 >
-                  {new Date(m.createdAt).toLocaleTimeString()}
+                  {formatTime(m.createdAt)}
                 </p>
               </div>
             </div>

@@ -1,6 +1,7 @@
 import { api } from "@/lib/api-server";
 import { TenantNav } from "@/components/TenantNav";
 import { T } from "@/components/T";
+import { formatDateTime } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +76,7 @@ export default async function LeadsPage({
                       </span>
                     </td>
                     <td className="px-4 py-2 text-xs text-brand-ink/55">
-                      {new Date(l.capturedAt).toLocaleString()}
+                      {formatDateTime(l.capturedAt)}
                     </td>
                   </tr>
                 );

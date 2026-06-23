@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import type { Tenant } from "@/lib/api-core";
 import { useT } from "@/lib/i18n";
+import { formatDate } from "@/lib/datetime";
 
 /**
  * Funnel panel on the tenant overview. Three logical cards: Funnel URL,
@@ -187,7 +188,7 @@ export function FunnelPanel({
               </strong>{" "}
               (
               {tenant.trialEndsAt
-                ? new Date(tenant.trialEndsAt).toLocaleDateString()
+                ? formatDate(tenant.trialEndsAt)
                 : ""}
               )
             </>

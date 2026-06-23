@@ -8,6 +8,7 @@ import {
   type ToolOutcome,
 } from "@lidh/core";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { MailService } from "../common/mail/mail.service";
 import { RetrievalService } from "./retrieval.service";
 import {
   PropertySearchService,
@@ -38,6 +39,7 @@ export class ChatService {
     private readonly prisma: PrismaService,
     private readonly retrieval: RetrievalService,
     private readonly propertySearch: PropertySearchService,
+    private readonly mail: MailService,
   ) {}
 
   /**
@@ -293,6 +295,15 @@ export class ChatService {
           await db.event.create({
             data: { tenantId, conversationId, kind: "lead_captured" },
           });
+          // Notify the business by email (fire-and-forget — must not block
+          // or fail the reply if email is down/unconfigured).
+          void this.mail
+            .notifyLead(tenantId, { name, email, phone, notes }, inv.transcript)
+            .catch((e) =>
+              this.logger.error(
+                `lead email failed: ${e instanceof Error ? e.message : "unknown"}`,
+              ),
+            );
           return {
             result:
               "Lead saved to the business dashboard. Thank the visitor and let them know someone will follow up.",
@@ -310,6 +321,13 @@ export class ChatService {
               meta: { reason, summary },
             },
           });
+          void this.mail
+            .notifyHandoff(tenantId, { reason, summary }, inv.transcript)
+            .catch((e) =>
+              this.logger.error(
+                `handoff email failed: ${e instanceof Error ? e.message : "unknown"}`,
+              ),
+            );
           return {
             result:
               "Handoff recorded for the team. Tell the visitor a teammate will reply shortly; do not promise an exact time.",

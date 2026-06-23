@@ -113,6 +113,17 @@ export type Lead = {
   capturedAt: string;
 };
 
+export type Usage = {
+  monthStart: string;
+  conversations: number;
+  messagesIn: number;
+  messagesOut: number;
+  leads: number;
+  handoffs: number;
+  tokensIn: number;
+  tokensOut: number;
+};
+
 export type Transport = {
   get: <T>(path: string) => Promise<T>;
   post: <T>(path: string, body: unknown) => Promise<T>;
@@ -229,6 +240,7 @@ export function makeApi(t: Transport) {
       t.get<ConversationListItem[]>(`/conversations?tenantSlug=${slug}`),
     getThread: (id: string) => t.get<Thread>(`/conversations/${id}`),
     listLeads: (slug: string) => t.get<Lead[]>(`/leads?tenantSlug=${slug}`),
+    getUsage: (slug: string) => t.get<Usage>(`/usage?tenantSlug=${slug}`),
     getAgent: (slug: string) => t.get<Agent>(`/agents?tenantSlug=${slug}`),
     upsertPersona: (body: {
       tenantSlug: string;
