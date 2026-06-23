@@ -62,7 +62,9 @@ export class ChatController {
     };
 
     try {
-      for await (const ev of this.chat.runWeb(dto)) {
+      const reqOrigin =
+        typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+      for await (const ev of this.chat.runWeb(dto, reqOrigin)) {
         switch (ev.kind) {
           case "meta":
             send("meta", { conversationId: ev.conversationId });

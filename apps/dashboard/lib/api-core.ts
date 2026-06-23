@@ -241,6 +241,12 @@ export function makeApi(t: Transport) {
     getThread: (id: string) => t.get<Thread>(`/conversations/${id}`),
     listLeads: (slug: string) => t.get<Lead[]>(`/leads?tenantSlug=${slug}`),
     getUsage: (slug: string) => t.get<Usage>(`/usage?tenantSlug=${slug}`),
+    getWebOrigins: (slug: string) =>
+      t.get<{ allowedOrigins: string[] }>(`/tenants/${slug}/web-origins`),
+    setWebOrigins: (slug: string, allowedOrigins: string[]) =>
+      t.put<{ allowedOrigins: string[] }>(`/tenants/${slug}/web-origins`, {
+        allowedOrigins,
+      }),
     getAgent: (slug: string) => t.get<Agent>(`/agents?tenantSlug=${slug}`),
     upsertPersona: (body: {
       tenantSlug: string;

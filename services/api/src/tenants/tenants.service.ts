@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { expandPersonas } from "@lidh/core";
+import type { Prisma } from "@lidh/db";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { StorageService } from "../common/storage/storage.service";
 import { TenantContextService } from "../common/tenant-context/tenant-context.service";
@@ -22,6 +23,33 @@ function appBaseUrl(): string {
   return (
     process.env.APP_BASE_URL?.replace(/\/$/, "") ?? "https://app.lidh.al"
   );
+}
+
+/** Read allowedOrigins out of a web channel's JSON config. */
+function readAllowedOrigins(config: unknown): string[] {
+  if (config && typeof config === "object") {
+    const v = (config as Record<string, unknown>).allowedOrigins;
+    if (Array.isArray(v)) {
+      return v.filter((x): x is string => typeof x === "string");
+    }
+  }
+  return [];
+}
+
+/** Normalize user-entered origins to canonical "scheme://host[:port]" form,
+ *  deduped, dropping blanks. */
+function normalizeOrigins(origins: string[]): string[] {
+  const out = new Set<string>();
+  for (const raw of origins) {
+    const s = String(raw).trim();
+    if (!s) continue;
+    try {
+      out.add(new URL(s).origin);
+    } catch {
+      out.add(s.replace(/\/+$/, ""));
+    }
+  }
+  return [...out];
 }
 
 /** Default free-trial window for newly created tenants. */
@@ -379,6 +407,47 @@ export class TenantsService {
    * a normalized pending email (deferred bind on first sign-in).
    * Shared by createTenant and setOwner.
    */
+  /** Read the web widget's allowed origins (owner/admin of this tenant). */
+  async getWebOrigins(slug: string): Promise<{ allowedOrigins: string[] }> {
+    const db = this.prisma.client;
+    const tenant = await db.tenant.findUnique({ where: { slug } });
+    if (!tenant) throw new NotFoundException("tenant_not_found");
+    assertCanAccessTenant(this.ctx.get(), tenant.id);
+    const channel = await db.channel.findUnique({
+      where: { tenantId_kind: { tenantId: tenant.id, kind: "web" } },
+      select: { config: true },
+    });
+    return { allowedOrigins: readAllowedOrigins(channel?.config) };
+  }
+
+  /** Replace the web widget's allowed origins (owner/admin of this tenant).
+   *  An empty list means "open to any origin" — the chat endpoint only
+   *  restricts embedding when the list is non-empty. */
+  async setWebOrigins(
+    slug: string,
+    origins: string[],
+  ): Promise<{ allowedOrigins: string[] }> {
+    const db = this.prisma.client;
+    const tenant = await db.tenant.findUnique({ where: { slug } });
+    if (!tenant) throw new NotFoundException("tenant_not_found");
+    assertCanAccessTenant(this.ctx.get(), tenant.id);
+    const channel = await db.channel.findUnique({
+      where: { tenantId_kind: { tenantId: tenant.id, kind: "web" } },
+      select: { id: true, config: true },
+    });
+    if (!channel) throw new NotFoundException("web_channel_not_found");
+    const allowedOrigins = normalizeOrigins(origins);
+    const config =
+      channel.config && typeof channel.config === "object"
+        ? (channel.config as Record<string, unknown>)
+        : {};
+    await db.channel.update({
+      where: { id: channel.id },
+      data: { config: { ...config, allowedOrigins } as Prisma.InputJsonValue },
+    });
+    return { allowedOrigins };
+  }
+
   private async resolveOwnerEmail(
     rawEmail: string,
   ): Promise<{ userId: string | null; pendingEmail: string | null }> {

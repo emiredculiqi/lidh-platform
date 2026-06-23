@@ -1,6 +1,8 @@
 import { TenantNav } from "@/components/TenantNav";
 import { T } from "@/components/T";
 import { CopyBlock } from "@/components/CopyBlock";
+import { WidgetOriginsEditor } from "@/components/WidgetOriginsEditor";
+import { api } from "@/lib/api-server";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +14,13 @@ export default async function DeveloperPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+
+  let allowedOrigins: string[] = [];
+  try {
+    allowedOrigins = (await api.getWebOrigins(slug)).allowedOrigins;
+  } catch {
+    // non-fatal — the editor still renders empty
+  }
 
   const basic = `<script
   src="${APP_URL}/widget.js"
@@ -81,6 +90,19 @@ export default async function DeveloperPage({
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold text-brand-deep">
+          <T al="Origjinat e lejuara (siguri)" en="Allowed origins (security)" />
+        </h2>
+        <p className="max-w-2xl text-sm text-brand-ink/60">
+          <T
+            al="Kontrollo cilat faqe mund ta ngarkojnë widget-in tënd. Lëre bosh për ta lejuar kudo."
+            en="Control which sites may load your widget. Leave empty to allow it anywhere."
+          />
+        </p>
+        <WidgetOriginsEditor slug={slug} initial={allowedOrigins} />
       </section>
 
       <p className="max-w-2xl text-xs text-brand-ink/50">

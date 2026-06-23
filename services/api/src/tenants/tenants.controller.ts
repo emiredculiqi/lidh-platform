@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
 } from "@nestjs/common";
 import {
   ApiCreatedResponse,
@@ -12,7 +13,15 @@ import {
   ApiOperation,
   ApiTags,
 } from "@nestjs/swagger";
-import { IsEmail, IsInt, IsString, Max, Min, MinLength } from "class-validator";
+import {
+  IsArray,
+  IsEmail,
+  IsInt,
+  IsString,
+  Max,
+  Min,
+  MinLength,
+} from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 import { Public } from "../common/auth/public.decorator";
 import { PlatformAdminOnly } from "../common/auth/platform-admin.decorator";
@@ -42,6 +51,19 @@ class ExtendTrialDto {
   @Min(1)
   @Max(365)
   days!: number;
+}
+
+class WebOriginsDto {
+  @ApiProperty({
+    type: [String],
+    description:
+      "Origins (scheme://host[:port]) allowed to embed the chat widget. " +
+      "Empty = open to any site. Lidh.al's own pages are always allowed.",
+    example: ["https://shpresabeauty.com", "https://www.shpresabeauty.com"],
+  })
+  @IsArray()
+  @IsString({ each: true })
+  allowedOrigins!: string[];
 }
 
 class SetOwnerDto {
@@ -93,6 +115,33 @@ export class TenantsController {
   @ApiOkResponse({ type: TenantResponseDto })
   get(@Param("slug") slug: string): Promise<TenantResponseDto> {
     return this.tenants.getTenant(slug);
+  }
+
+  @Get("tenants/:slug/web-origins")
+  @ApiOperation({
+    summary: "Get the chat widget's allowed origins",
+    description:
+      "Origins permitted to embed this tenant's widget (empty = open). " +
+      "Available to the tenant owner/admin, not platform-admin only.",
+  })
+  getWebOrigins(
+    @Param("slug") slug: string,
+  ): Promise<{ allowedOrigins: string[] }> {
+    return this.tenants.getWebOrigins(slug);
+  }
+
+  @Put("tenants/:slug/web-origins")
+  @ApiOperation({
+    summary: "Set the chat widget's allowed origins",
+    description:
+      "Replaces the allow-list. Empty array = open to any site. Lidh.al's " +
+      "own funnel/dashboard origins are always allowed regardless.",
+  })
+  setWebOrigins(
+    @Param("slug") slug: string,
+    @Body() dto: WebOriginsDto,
+  ): Promise<{ allowedOrigins: string[] }> {
+    return this.tenants.setWebOrigins(slug, dto.allowedOrigins);
   }
 
   @Post("tenants/:id/grant-plan")

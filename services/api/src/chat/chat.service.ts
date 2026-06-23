@@ -48,7 +48,10 @@ export class ChatService {
    *   RAG retrieve → run @lidh/core → persist assistant msg + tokens.
    * Yields client events; consumes core's `usage`/persistence internally.
    */
-  async *runWeb(dto: ChatWebRequestDto): AsyncGenerator<ChatStreamEvent> {
+  async *runWeb(
+    dto: ChatWebRequestDto,
+    origin?: string,
+  ): AsyncGenerator<ChatStreamEvent> {
     const db = this.prisma.client;
 
     const tenant = await db.tenant.findUnique({
@@ -70,6 +73,20 @@ export class ChatService {
     });
     if (!channel) {
       yield { kind: "error", message: "web_channel_not_configured" };
+      return;
+    }
+
+    // Per-tenant widget origin gate. The chat endpoint is CORS-open (the
+    // preflight can't carry the tenant slug), so we enforce the tenant's
+    // allow-list here instead. Empty list = open to any site; Lidh.al's own
+    // origins (funnel + dashboard) and localhost always pass.
+    const allowedOrigins = readAllowedOrigins(channel.config);
+    if (
+      allowedOrigins.length > 0 &&
+      origin &&
+      !isOriginAllowed(origin, allowedOrigins)
+    ) {
+      yield { kind: "error", message: "origin_not_allowed" };
       return;
     }
 
@@ -399,6 +416,37 @@ function coercePropertyFilters(input: Record<string, unknown>): PropertyFilters 
     minAreaSqm: num(input.minAreaSqm),
     maxAreaSqm: num(input.maxAreaSqm),
   };
+}
+
+/** Read allowedOrigins out of a web channel's JSON config. */
+function readAllowedOrigins(config: unknown): string[] {
+  if (config && typeof config === "object") {
+    const v = (config as Record<string, unknown>).allowedOrigins;
+    if (Array.isArray(v)) {
+      return v.filter((x): x is string => typeof x === "string");
+    }
+  }
+  return [];
+}
+
+/** Is this request Origin allowed to embed the widget? Lidh.al's own pages
+ *  and localhost always pass; otherwise the origin must be in the list. */
+function isOriginAllowed(origin: string, allowed: string[]): boolean {
+  const o = origin.replace(/\/+$/, "");
+  try {
+    const host = new URL(o).hostname;
+    if (
+      host === "lidh.al" ||
+      host.endsWith(".lidh.al") ||
+      host === "localhost" ||
+      host === "127.0.0.1"
+    ) {
+      return true;
+    }
+  } catch {
+    // not a parseable origin — fall through to an exact match
+  }
+  return allowed.some((a) => a.replace(/\/+$/, "") === o);
 }
 
 function readBusinessFacts(settings: unknown): string {
