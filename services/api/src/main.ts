@@ -36,15 +36,14 @@ async function bootstrap() {
     }),
   );
 
-  // CORS — comma-separated allowlist via env. Wildcard "*" only meaningful in dev.
-  const corsOrigins = (process.env.CORS_ORIGINS ?? "*")
-    .split(",")
-    .map((o) => o.trim())
-    .filter(Boolean);
-  app.enableCors({
-    origin: corsOrigins.length === 1 && corsOrigins[0] === "*" ? true : corsOrigins,
-    credentials: true,
-  });
+  // CORS: reflect ANY origin. The only browser-side cross-origin consumer is
+  // the public chat widget (POST /v1/chat/web), which is meant to embed on any
+  // website. The dashboard talks to the API server-side via its BFF proxy, and
+  // auth is Bearer-token (not cookies), so reflecting origins exposes nothing.
+  // WHICH sites may actually use a given tenant's widget is enforced per-tenant
+  // via that tenant's allowedOrigins (chat.service) — that is the real gate, so
+  // a global CORS allowlist is intentionally not used here.
+  app.enableCors({ origin: true, credentials: true });
 
   // OpenAPI/Swagger docs at /docs (+ /docs-json). Env-gated inside.
   // Mounted after setGlobalPrefix so paths are predictable.
