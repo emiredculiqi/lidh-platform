@@ -171,10 +171,14 @@
       panel.classList.add("open");
       launch.querySelector(".ic").innerHTML = I_X;
       lockBody(true);
+      // On mobile the panel is full-screen, so the floating launcher would
+      // overlap the input. Hide it — the header ✕ closes the panel there.
+      if (mq.matches) launch.style.display = "none";
       if (!history.length && !greeted) { greeted = true; addMsg("a", cfg.greeting); }
       setTimeout(function () { input.focus(); scrollDown(); }, 70);
     } else {
       panel.classList.add("closing");
+      launch.style.display = "";
       launch.querySelector(".ic").innerHTML = I_MSG;
       lockBody(false);
       setTimeout(function () { panel.classList.remove("open", "closing"); }, 160);
