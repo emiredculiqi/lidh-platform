@@ -1,4 +1,3 @@
-import { TenantNav } from "@/components/TenantNav";
 import { TestChat } from "@/components/TestChat";
 import { T } from "@/components/T";
 
@@ -11,11 +10,13 @@ export default async function TestPage({
 }) {
   const { slug } = await params;
   return (
-    <div className="space-y-6">
-      <h1 className="font-display text-2xl font-semibold text-brand-deep">
-        <T al="Testo agjentin" en="Test agent" />
-      </h1>
-      <TenantNav slug={slug} active="test" />
+    <div className="space-y-5">
+      <p className="max-w-2xl text-sm text-slate-500">
+        <T
+          al="Provoje asistentin si një vizitor — pa u shfaqur te Bisedat apo te raportet."
+          en="Try the assistant as a visitor — it won't show in your inbox or reports."
+        />
+      </p>
       <TestChat tenantSlug={slug} />
     </div>
   );

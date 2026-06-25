@@ -1,6 +1,8 @@
+import Link from "next/link";
+import type { ReactNode } from "react";
 import { api } from "@/lib/api-server";
-import { TenantNav } from "@/components/TenantNav";
 import { T } from "@/components/T";
+import { Card } from "@/components/ui/Card";
 import { formatDateTime } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +12,14 @@ function field(p: Record<string, unknown>, k: string): string {
   return typeof v === "string" && v.trim() ? v : "—";
 }
 
+const LEAD_STATUS: Record<string, { al: string; en: string; cls: string }> = {
+  new_: { al: "I ri", en: "New", cls: "bg-blue-50 text-brand-blue" },
+  new: { al: "I ri", en: "New", cls: "bg-blue-50 text-brand-blue" },
+  contacted: { al: "Kontaktuar", en: "Contacted", cls: "bg-amber-50 text-amber-600" },
+  won: { al: "Fituar", en: "Won", cls: "bg-emerald-50 text-emerald-600" },
+  lost: { al: "Humbur", en: "Lost", cls: "bg-slate-100 text-slate-500" },
+};
+
 export default async function LeadsPage({
   params,
 }: {
@@ -18,73 +28,77 @@ export default async function LeadsPage({
   const { slug } = await params;
   const leads = await api.listLeads(slug);
 
-  return (
-    <div className="space-y-6">
-      <h1 className="font-display text-2xl font-semibold text-brand-deep">
-        <T al="Klientë potencialë" en="Leads" />
-      </h1>
-      <TenantNav slug={slug} active="leads" />
-
-      {leads.length === 0 ? (
-        <p className="text-sm text-brand-ink/55">
+  if (leads.length === 0) {
+    return (
+      <Card className="py-16 text-center">
+        <p className="text-sm text-slate-400">
           <T
-            al="Ende asnjë lead i kapur. Agjenti ruan një lead kur një vizitor tregon interes të qartë."
-            en="No leads captured yet. The agent saves a lead when a visitor shows clear interest."
+            al="Ende asnjë kontakt i kapur. Asistenti ruan një kontakt kur një vizitor tregon interes të qartë."
+            en="No leads captured yet. The assistant saves a lead when a visitor shows clear interest."
           />
         </p>
-      ) : (
-        <div className="overflow-hidden rounded-xl border border-brand-ink/10 bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-brand-fog text-left text-brand-ink/60">
-              <tr>
-                <th className="px-4 py-2 font-medium">
-                  <T al="Emri" en="Name" />
-                </th>
-                <th className="px-4 py-2 font-medium">
-                  <T al="Telefoni / Email" en="Phone / Email" />
-                </th>
-                <th className="px-4 py-2 font-medium">
-                  <T al="Shënime" en="Notes" />
-                </th>
-                <th className="px-4 py-2 font-medium">
-                  <T al="Statusi" en="Status" />
-                </th>
-                <th className="px-4 py-2 font-medium">
-                  <T al="Kapur më" en="Captured" />
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {leads.map((l) => {
-                const p = (l.payload ?? {}) as Record<string, unknown>;
-                return (
-                  <tr key={l.id} className="border-t border-brand-ink/5">
-                    <td className="px-4 py-2">
-                      {l.contactName || field(p, "name")}
-                    </td>
-                    <td className="px-4 py-2 text-brand-ink/70">
-                      {l.contactPhone || field(p, "phone")}
-                      <br />
-                      {field(p, "email")}
-                    </td>
-                    <td className="px-4 py-2 text-brand-ink/70">
-                      {field(p, "notes")}
-                    </td>
-                    <td className="px-4 py-2">
-                      <span className="rounded bg-brand-blue/10 px-2 py-0.5 text-xs font-medium text-brand-blue">
-                        {l.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-xs text-brand-ink/55">
-                      {formatDateTime(l.capturedAt)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card padded={false}>
+      <div className="divide-y divide-slate-100">
+        {leads.map((l) => {
+          const p = (l.payload ?? {}) as Record<string, unknown>;
+          const st = LEAD_STATUS[l.status] ?? {
+            al: l.status,
+            en: l.status,
+            cls: "bg-slate-100 text-slate-500",
+          };
+          const name = l.contactName || field(p, "name");
+          const inner: ReactNode = (
+            <>
+              <div className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-brand-blue/10 text-[12.5px] font-bold text-brand-blue">
+                {(name === "—" ? "·" : name).slice(0, 2).toUpperCase()}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-[14px] font-semibold text-brand-deep">
+                    {name}
+                  </span>
+                  <span
+                    className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${st.cls}`}
+                  >
+                    <T al={st.al} en={st.en} />
+                  </span>
+                </div>
+                <div className="truncate text-[12.5px] text-slate-400">
+                  {[l.contactPhone || field(p, "phone"), field(p, "email")]
+                    .filter((x) => x && x !== "—")
+                    .join(" · ") || "—"}
+                </div>
+                {field(p, "notes") !== "—" ? (
+                  <p className="mt-0.5 line-clamp-1 text-[12.5px] text-slate-500">
+                    {field(p, "notes")}
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex-none text-right text-[11px] text-slate-400">
+                {formatDateTime(l.capturedAt)}
+              </div>
+            </>
+          );
+          return l.contactId ? (
+            <Link
+              key={l.id}
+              href={`/tenants/${slug}/contacts/${l.contactId}`}
+              className="flex items-center gap-3 px-5 py-3.5 transition hover:bg-slate-50"
+            >
+              {inner}
+            </Link>
+          ) : (
+            <div key={l.id} className="flex items-center gap-3 px-5 py-3.5">
+              {inner}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
   );
 }

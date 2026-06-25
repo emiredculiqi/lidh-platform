@@ -329,7 +329,7 @@ calls the API with no auth. The `User` table is empty (M1 Clerk webhook is a
     Clerk `auth().getToken()` server-side and forwards to the API with the
     Bearer header. `api.*` (tenants/knowledge/agents/conversations/leads)
     point at the proxy (one token code path, no client/server split, no
-    CORS). Public chat SSE (TestChat/DemoChat) still hits the API directly
+    CORS). Public chat SSE (TestChat/FunnelChat) still hits the API directly
     (it's @Public + streaming).
 - **Why:** JIT removes the webhook+ngrok prerequisite. The BFF proxy solves
   the "client components can't read a server-only Clerk token" problem and
@@ -380,7 +380,7 @@ fetch → cookies ride along automatically).
     Zero server-only imports, so it can enter any client bundle.
   - **`lib/api.ts`** — `export * from "./api-core"` + `api = makeApi(proxyTransport)`.
     What **client** components import (forms) and anything needing only
-    `apiBase`/types (TestChat/DemoChat, public demo page). Client-safe.
+    `apiBase`/types (TestChat/FunnelChat, public funnel page). Client-safe.
   - **`lib/api-server.ts`** — `import "server-only"` (build *fails loudly* if a
     client ever imports it) + static `import { auth } from "@clerk/nextjs/server"`
     + a direct-call+Bearer transport; `api = makeApi(serverTransport)`. The 6

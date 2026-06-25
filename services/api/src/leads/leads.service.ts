@@ -30,6 +30,7 @@ export class LeadsService {
       payload: l.payload,
       contactName: l.contact?.name ?? null,
       contactPhone: l.contact?.phone ?? null,
+      contactId: l.contactId,
       conversationId: l.conversationId,
       capturedAt: l.capturedAt,
     }));

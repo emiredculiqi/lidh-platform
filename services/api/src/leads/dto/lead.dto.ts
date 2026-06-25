@@ -13,6 +13,8 @@ export class LeadListItemDto {
   contactName!: string | null;
   @ApiProperty({ example: "+355699998877", nullable: true, type: String })
   contactPhone!: string | null;
+  @ApiProperty({ example: "clx_contact1", nullable: true, type: String })
+  contactId!: string | null;
   @ApiProperty({ example: "clx_conv1", nullable: true, type: String })
   conversationId!: string | null;
   @ApiProperty({ example: "2026-05-16T13:00:00.000Z" }) capturedAt!: Date;

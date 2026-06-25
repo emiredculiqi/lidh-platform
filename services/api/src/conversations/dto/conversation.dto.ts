@@ -33,9 +33,14 @@ export class ThreadDto {
   @ApiProperty({ example: "web" }) channelKind!: string;
   @ApiProperty({ example: "open" }) status!: string;
   @ApiProperty({ example: false }) aiPaused!: boolean;
+  @ApiProperty({ example: "al", nullable: true, type: String })
+  locale!: string | null;
+  @ApiProperty({ example: "clx_contact1" }) contactId!: string;
   @ApiProperty({ example: "Ana B.", nullable: true, type: String })
   contactName!: string | null;
   @ApiProperty({ example: "+355699998877", nullable: true, type: String })
   contactPhone!: string | null;
+  @ApiProperty({ example: "ana@example.com", nullable: true, type: String })
+  contactEmail!: string | null;
   @ApiProperty({ type: [ThreadMessageDto] }) messages!: ThreadMessageDto[];
 }

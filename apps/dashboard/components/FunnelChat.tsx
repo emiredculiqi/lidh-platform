@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiBase } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { Markdown } from "./Markdown";
@@ -8,10 +8,14 @@ import { Markdown } from "./Markdown";
 type Msg = { role: "user" | "assistant"; text: string };
 
 /**
- * Public, branded demo chat (the prospect-facing experience). Same SSE
- * contract as the dashboard Test chat, standalone styling, no admin chrome.
+ * Public, branded funnel chat — the customer-facing front door rendered on the
+ * permanent /b/<slug> page (ADR-014). Same SSE contract as the dashboard Test
+ * chat, standalone styling, no admin chrome.
+ *
+ * Also opens a receive-stream (/v1/live/widget) once a conversation exists, so
+ * replies a human agent sends during a takeover appear here live.
  */
-export function DemoChat({
+export function FunnelChat({
   tenantSlug,
   businessName,
 }: {
@@ -21,13 +25,23 @@ export function DemoChat({
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const sessionRef = useRef(
-    `demo-${Math.random().toString(36).slice(2)}`,
-  );
+  const sessionRef = useRef(`funnel-${Math.random().toString(36).slice(2)}`);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const convIdRef = useRef<string | null>(null);
+  const agentStreamRef = useRef(false);
+  const closedRef = useRef(false);
+  const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
 
-  // Auto-grow the textarea up to ~5 lines, then scroll. Reset to one row
-  // after sending (handled in submitMessage via setInput("")).
+  // Stop the receive-stream when the chat unmounts (graceful cancel, no
+  // AbortError surfacing in the dev overlay).
+  useEffect(
+    () => () => {
+      closedRef.current = true;
+      readerRef.current?.cancel().catch(() => {});
+    },
+    [],
+  );
+
   function autoGrow() {
     const el = taRef.current;
     if (!el) return;
@@ -42,6 +56,8 @@ export function DemoChat({
         `Pyetni çfarëdo për ${business} — orare, shërbime, çmime…`,
       messagePlaceholder: "Shkruani një mesazh…",
       send: "Dërgo",
+      connecting: "Po ju lidhim me një person…",
+      failed: "Diçka shkoi keq. Provoni përsëri.",
     },
     en: {
       poweredBy: "Powered by Lidh.al",
@@ -49,15 +65,59 @@ export function DemoChat({
         `Ask anything about ${business} — hours, services, prices…`,
       messagePlaceholder: "Write a message…",
       send: "Send",
+      connecting: "Connecting you to a person…",
+      failed: "Something went wrong. Please try again.",
     },
   });
+
+  // Listen for human/agent messages pushed during a takeover.
+  async function openAgentStream(convId: string) {
+    if (agentStreamRef.current) return;
+    agentStreamRef.current = true;
+    while (!closedRef.current) {
+      try {
+        const res = await fetch(
+          `${apiBase}/v1/live/widget?conversationId=${encodeURIComponent(convId)}`,
+        );
+        if (closedRef.current) return;
+        if (!res.ok || !res.body) throw new Error(`stream ${res.status}`);
+        const reader = res.body.getReader();
+        readerRef.current = reader;
+        const dec = new TextDecoder();
+        let buf = "";
+        while (!closedRef.current) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          const parts = buf.split("\n\n");
+          buf = parts.pop() ?? "";
+          for (const p of parts) {
+            const ev = /event: (.+)/.exec(p)?.[1];
+            const d = /data: (.+)/.exec(p)?.[1];
+            if (ev !== "agent" || !d) continue;
+            try {
+              const data = JSON.parse(d);
+              if (data.type === "agent_message" && data.text) {
+                setMsgs((m) => [...m, { role: "assistant", text: data.text }]);
+              }
+            } catch {
+              /* ignore */
+            }
+          }
+        }
+      } catch {
+        /* network drop */
+      }
+      if (closedRef.current) return;
+      await new Promise((r) => setTimeout(r, 5000)); // reconnect
+    }
+  }
 
   function send(e: React.FormEvent) {
     e.preventDefault();
     void submitMessage();
   }
 
-  // Enter sends; Shift+Enter inserts a newline (standard chat behavior).
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -69,13 +129,13 @@ export function DemoChat({
     const message = input.trim();
     if (!message || busy) return;
     setInput("");
-    // Collapse the textarea back to a single row after sending.
     requestAnimationFrame(() => {
       if (taRef.current) taRef.current.style.height = "auto";
     });
     setMsgs((m) => [...m, { role: "user", text: message }]);
     setBusy(true);
     let assistant = "";
+    let sawEffect = false;
     setMsgs((m) => [...m, { role: "assistant", text: "" }]);
 
     const bump = () =>
@@ -93,6 +153,7 @@ export function DemoChat({
           tenantSlug,
           message,
           sessionRef: sessionRef.current,
+          conversationId: convIdRef.current ?? undefined,
         }),
       });
       const reader = res.body?.getReader();
@@ -110,9 +171,14 @@ export function DemoChat({
           const d = /data: (.+)/.exec(p)?.[1];
           if (!ev || !d) continue;
           const data = JSON.parse(d);
-          if (ev === "text") {
+          if (ev === "meta" && data.conversationId) {
+            convIdRef.current = data.conversationId;
+            void openAgentStream(data.conversationId);
+          } else if (ev === "text") {
             assistant += data.delta;
             bump();
+          } else if (ev === "effect") {
+            sawEffect = true;
           } else if (ev === "error") {
             assistant += `\n[error: ${data.message}]`;
             bump();
@@ -124,6 +190,22 @@ export function DemoChat({
       bump();
     } finally {
       setBusy(false);
+      // No assistant text? Either the AI is paused (human will reply via the
+      // receive-stream) or a genuine empty reply. Replace the placeholder.
+      if (!assistant) {
+        setMsgs((m) => {
+          const c = [...m];
+          if (c[c.length - 1]?.role === "assistant" && !c[c.length - 1].text) {
+            // Handoff → "connecting you to a person"; the human's reply then
+            // arrives below via the receive-stream. Otherwise a soft error.
+            c[c.length - 1] = {
+              role: "assistant",
+              text: sawEffect ? t.connecting : t.failed,
+            };
+          }
+          return c;
+        });
+      }
     }
   }
 

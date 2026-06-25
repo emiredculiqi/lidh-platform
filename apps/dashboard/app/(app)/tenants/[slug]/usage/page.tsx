@@ -1,5 +1,4 @@
 import { api } from "@/lib/api-server";
-import { TenantNav } from "@/components/TenantNav";
 import { T } from "@/components/T";
 import { formatDate } from "@/lib/datetime";
 
@@ -48,7 +47,6 @@ export default async function UsagePage({
       <h1 className="font-display text-2xl font-semibold text-brand-deep">
         <T al="Përdorimi" en="Usage" />
       </h1>
-      <TenantNav slug={slug} active="usage" />
 
       <p className="text-sm text-brand-ink/55">
         <T al="Këtë muaj, që nga" en="This month, since" />{" "}

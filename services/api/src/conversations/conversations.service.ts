@@ -1,6 +1,11 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { TenantContextService } from "../common/tenant-context/tenant-context.service";
+import { LiveService } from "../common/live/live.service";
 import { assertCanAccessTenant } from "../common/auth/access";
 import type {
   ConversationListItemDto,
@@ -14,7 +19,82 @@ export class ConversationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly ctx: TenantContextService,
+    private readonly live: LiveService,
   ) {}
+
+  /** Take over a conversation (pause the AI) or hand it back (resume). */
+  async setAi(id: string, paused: boolean): Promise<{ aiPaused: boolean }> {
+    const db = this.prisma.client;
+    const conv = await db.conversation.findUnique({
+      where: { id },
+      select: { id: true, tenantId: true },
+    });
+    if (!conv) throw new NotFoundException("conversation_not_found");
+    assertCanAccessTenant(this.ctx.get(), conv.tenantId);
+    const userId = this.ctx.get().userId ?? null;
+
+    await db.conversation.update({
+      where: { id },
+      data: { aiPaused: paused, assignedToUserId: paused ? userId : null },
+    });
+    await db.event.create({
+      data: {
+        tenantId: conv.tenantId,
+        conversationId: id,
+        kind: paused ? "agent_paused" : "agent_resumed",
+      },
+    });
+    // Nudge other dashboard viewers to refresh.
+    this.live.publish(conv.tenantId, {
+      type: paused ? "ai_paused" : "ai_resumed",
+      conversationId: id,
+    });
+    return { aiPaused: paused };
+  }
+
+  /** A human agent sends a reply into a (taken-over) conversation. Stored as
+   *  an assistant message tagged human-authored, and pushed to BOTH the
+   *  dashboard live stream and the visitor's widget receive-stream. */
+  async reply(id: string, text: string): Promise<{ ok: true }> {
+    const db = this.prisma.client;
+    const trimmed = text.trim();
+    if (!trimmed) throw new BadRequestException("empty_reply");
+    const conv = await db.conversation.findUnique({
+      where: { id },
+      select: { id: true, tenantId: true },
+    });
+    if (!conv) throw new NotFoundException("conversation_not_found");
+    assertCanAccessTenant(this.ctx.get(), conv.tenantId);
+
+    await db.message.create({
+      data: {
+        conversationId: id,
+        tenantId: conv.tenantId,
+        role: "assistant",
+        contentText: trimmed,
+        contentJson: { human: true, by: this.ctx.get().userId ?? null },
+      },
+    });
+    await db.conversation.update({
+      where: { id },
+      data: { lastMsgAt: new Date() },
+    });
+
+    // Dashboard refresh:
+    this.live.publish(conv.tenantId, {
+      type: "message",
+      conversationId: id,
+      role: "assistant",
+      preview: trimmed.slice(0, 120),
+    });
+    // Push to the visitor's widget (it subscribes to `conv:<id>`):
+    this.live.publish(`conv:${id}`, {
+      type: "agent_message",
+      conversationId: id,
+      text: trimmed,
+    });
+    return { ok: true };
+  }
 
   async list(
     tenantSlug: string,
@@ -64,7 +144,7 @@ export class ConversationsService {
     const c = await this.prisma.client.conversation.findUnique({
       where: { id },
       include: {
-        contact: { select: { name: true, phone: true } },
+        contact: { select: { id: true, name: true, phone: true, email: true } },
         channel: { select: { kind: true } },
         messages: {
           orderBy: { createdAt: "asc" },
@@ -84,8 +164,11 @@ export class ConversationsService {
       channelKind: c.channel.kind,
       status: c.status,
       aiPaused: c.aiPaused,
+      locale: c.locale,
+      contactId: c.contact.id,
       contactName: c.contact.name,
       contactPhone: c.contact.phone,
+      contactEmail: c.contact.email,
       messages: c.messages.map((m) => ({
         role: m.role,
         contentText: m.contentText,

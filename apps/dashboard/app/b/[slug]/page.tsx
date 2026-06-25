@@ -1,5 +1,5 @@
 import { apiBase } from "@/lib/api";
-import { DemoChat } from "@/components/DemoChat";
+import { FunnelChat } from "@/components/FunnelChat";
 import { T } from "@/components/T";
 
 export const dynamic = "force-dynamic";
@@ -96,7 +96,7 @@ export default async function FunnelPage({
 
   return (
     <main className="min-h-screen bg-brand-fog px-4 py-8">
-      <DemoChat tenantSlug={funnel.tenantSlug} businessName={funnel.name} />
+      <FunnelChat tenantSlug={funnel.tenantSlug} businessName={funnel.name} />
       <p className="mx-auto mt-4 max-w-2xl text-center text-xs text-brand-ink/40">
         <T al="Mundësuar nga Lidh.al" en="Powered by Lidh.al" />
       </p>

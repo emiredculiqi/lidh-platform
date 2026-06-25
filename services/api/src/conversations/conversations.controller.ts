@@ -1,10 +1,31 @@
-import { Controller, Get, Param, Query } from "@nestjs/common";
-import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import {
+  ApiOkResponse,
+  ApiOperation,
+  ApiProperty,
+  ApiQuery,
+  ApiTags,
+} from "@nestjs/swagger";
+import { IsBoolean, IsString, MaxLength, MinLength } from "class-validator";
 import { ConversationsService } from "./conversations.service";
 import {
   ConversationListItemDto,
   ThreadDto,
 } from "./dto/conversation.dto";
+
+class SetAiDto {
+  @ApiProperty({ description: "true = pause AI (human takes over)." })
+  @IsBoolean()
+  paused!: boolean;
+}
+
+class ReplyDto {
+  @ApiProperty({ description: "The human agent's reply to the visitor." })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(4000)
+  text!: string;
+}
 
 @ApiTags("Conversations")
 @Controller("conversations")
@@ -33,5 +54,25 @@ export class ConversationsController {
   @ApiOkResponse({ type: ThreadDto })
   thread(@Param("id") id: string): Promise<ThreadDto> {
     return this.conversations.getThread(id);
+  }
+
+  @Post(":id/ai")
+  @ApiOperation({
+    summary: "Pause/resume the AI on a conversation (human takeover)",
+  })
+  setAi(
+    @Param("id") id: string,
+    @Body() dto: SetAiDto,
+  ): Promise<{ aiPaused: boolean }> {
+    return this.conversations.setAi(id, dto.paused);
+  }
+
+  @Post(":id/reply")
+  @ApiOperation({ summary: "Send a human reply into a conversation" })
+  reply(
+    @Param("id") id: string,
+    @Body() dto: ReplyDto,
+  ): Promise<{ ok: true }> {
+    return this.conversations.reply(id, dto.text);
   }
 }

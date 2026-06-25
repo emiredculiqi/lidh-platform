@@ -2,6 +2,10 @@ import Link from "next/link";
 import { api } from "@/lib/api-server";
 import { Markdown } from "@/components/Markdown";
 import { T } from "@/components/T";
+import { ChannelBadge } from "@/components/ui/ChannelBadge";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { ContactPanel } from "@/components/inbox/ContactPanel";
+import { TakeoverBar } from "@/components/inbox/TakeoverBar";
 import { formatTime } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
@@ -13,78 +17,84 @@ export default async function ThreadPage({
 }) {
   const { slug, conversationId } = await params;
   const thread = await api.getThread(conversationId);
+  const name = thread.contactName || thread.contactPhone;
 
   return (
-    <div className="space-y-5">
-      <Link
-        href={`/tenants/${slug}/inbox`}
-        className="text-sm text-brand-blue hover:underline"
-      >
-        ← <T al="Mesazhet" en="Inbox" />
-      </Link>
+    <div className="flex min-w-0 flex-1">
+      {/* Thread */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex flex-none items-center gap-3 border-b border-slate-200 px-5 py-3">
+          <Link
+            href={`/tenants/${slug}/inbox`}
+            className="text-slate-500 lg:hidden"
+            aria-label="Back"
+          >
+            ←
+          </Link>
+          <div className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-brand-blue/10 text-[12px] font-bold text-brand-blue">
+            {(name ?? "·").slice(0, 2).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-[14px] font-bold text-brand-deep">
+              {name || <T al="Vizitor anonim" en="Anonymous visitor" />}
+            </div>
+            <div className="mt-0.5 flex items-center gap-2">
+              <ChannelBadge kind={thread.channelKind} />
+              <StatusPill status={thread.status} />
+              {thread.aiPaused ? (
+                <span className="text-[11px] font-medium text-amber-600">
+                  <T al="AI i pezulluar" en="AI paused" />
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </div>
 
-      <div>
-        <h1 className="font-display text-xl font-semibold text-brand-deep">
-          {thread.contactName || thread.contactPhone || (
-            <T al="Vizitor anonim" en="Anonymous visitor" />
-          )}
-        </h1>
-        <p className="text-sm text-brand-ink/55">
-          {thread.channelKind} · {thread.status}
-          {thread.aiPaused ? (
-            <>
-              {" · "}
-              <T al="AI i pezulluar" en="AI paused" />
-            </>
-          ) : null}
-        </p>
-      </div>
-
-      <div className="space-y-3">
-        {thread.messages.map((m, i) => {
-          if (m.role === "tool") {
+        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-brand-fog px-5 py-5">
+          {thread.messages.map((m, i) => {
+            if (m.role === "tool") {
+              return (
+                <div key={i} className="text-center text-[11px] text-slate-400">
+                  <T al="— veglë: " en="— tool: " />
+                  {m.toolName} —
+                </div>
+              );
+            }
+            const isCustomer = m.role === "user";
             return (
               <div
                 key={i}
-                className="text-center text-xs text-brand-ink/40"
+                className={`flex ${isCustomer ? "justify-start" : "justify-end"}`}
               >
-                <T al="— veglë: " en="— tool: " />
-                {m.toolName} —
-              </div>
-            );
-          }
-          const isUser = m.role === "user";
-          return (
-            <div
-              key={i}
-              className={`flex ${isUser ? "justify-start" : "justify-end"}`}
-            >
-              <div
-                className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${
-                  isUser
-                    ? "bg-white border border-brand-ink/10 text-brand-ink"
-                    : "bg-brand-blue text-white"
-                }`}
-              >
-                {isUser ? (
-                  <p className="whitespace-pre-wrap">{m.contentText}</p>
-                ) : (
-                  <div className="text-sm">
-                    <Markdown content={m.contentText ?? ""} />
-                  </div>
-                )}
-                <p
-                  className={`mt-1 text-[10px] ${
-                    isUser ? "text-brand-ink/40" : "text-white/60"
+                <div
+                  className={`max-w-[78%] px-3.5 py-2.5 text-[13.5px] leading-relaxed shadow-sm ${
+                    isCustomer
+                      ? "rounded-2xl rounded-bl-sm border border-slate-200 bg-white text-brand-ink"
+                      : "rounded-2xl rounded-br-sm bg-brand-blue text-white"
                   }`}
                 >
-                  {formatTime(m.createdAt)}
-                </p>
+                  {isCustomer ? (
+                    <p className="whitespace-pre-wrap">{m.contentText}</p>
+                  ) : (
+                    <Markdown content={m.contentText ?? ""} />
+                  )}
+                  <p
+                    className={`mt-1 text-[10px] ${
+                      isCustomer ? "text-slate-400" : "text-white/60"
+                    }`}
+                  >
+                    {formatTime(m.createdAt)}
+                  </p>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+
+        <TakeoverBar conversationId={thread.id} aiPaused={thread.aiPaused} />
       </div>
+
+      <ContactPanel slug={slug} thread={thread} />
     </div>
   );
 }

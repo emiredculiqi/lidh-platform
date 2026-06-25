@@ -132,13 +132,13 @@ export function AgentEditor({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-brand-ink/10 bg-white p-4 text-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 text-sm">
         <p>
-          <span className="text-brand-ink/55">{t.agentLabel}</span>{" "}
+          <span className="text-slate-500">{t.agentLabel}</span>{" "}
           <span className="font-medium">{agent.name}</span> ·{" "}
-          <span className="text-brand-ink/55">{t.defaultLocaleLabel}</span>{" "}
+          <span className="text-slate-500">{t.defaultLocaleLabel}</span>{" "}
           {agent.defaultLocale} ·{" "}
-          <span className="text-brand-ink/55">{t.toolsLabel}</span>{" "}
+          <span className="text-slate-500">{t.toolsLabel}</span>{" "}
           {Object.entries(agent.toolsEnabled)
             .filter(([, v]) => v)
             .map(([k]) => k)
@@ -146,12 +146,12 @@ export function AgentEditor({
         </p>
       </div>
 
-      <div className="space-y-3 rounded-xl border border-brand-ink/10 bg-white p-4">
+      <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-5">
         <div>
           <h3 className="font-display font-semibold text-brand-deep">
             {t.modelHeading}
           </h3>
-          <p className="text-sm text-brand-ink/55">{t.modelHelp}</p>
+          <p className="text-sm text-slate-500">{t.modelHelp}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           {MODELS.map((m) => {
@@ -166,11 +166,11 @@ export function AgentEditor({
                 className={`rounded-lg border px-4 py-2 text-sm transition disabled:opacity-50 ${
                   selected
                     ? "border-brand-blue bg-brand-blue/10 font-medium text-brand-blue"
-                    : "border-brand-ink/15 text-brand-ink/70 hover:bg-brand-fog"
+                    : "border-slate-200 text-brand-ink/70 hover:bg-slate-50"
                 }`}
               >
                 {m.label}
-                <span className="ml-1 text-xs text-brand-ink/45">({note})</span>
+                <span className="ml-1 text-xs text-slate-400">({note})</span>
                 {selected ? " ✓" : ""}
               </button>
             );
@@ -187,7 +187,7 @@ export function AgentEditor({
       {agent.personas.map((p) => (
         <div
           key={p.locale}
-          className="space-y-2 rounded-xl border border-brand-ink/10 bg-white p-4"
+          className="space-y-2 rounded-2xl border border-slate-200 bg-white p-5"
         >
           <div className="flex items-center justify-between">
             <h3 className="font-display font-semibold text-brand-deep">
@@ -208,12 +208,12 @@ export function AgentEditor({
               setDrafts((d) => ({ ...d, [p.locale]: e.target.value }))
             }
             rows={8}
-            className="w-full rounded border border-brand-ink/15 px-3 py-2 font-mono text-xs"
+            className="w-full rounded border border-slate-200 px-3 py-2 font-mono text-xs"
           />
         </div>
       ))}
 
-      <div className="space-y-2 rounded-xl border border-dashed border-brand-ink/20 bg-white p-4">
+      <div className="space-y-2 rounded-2xl border border-dashed border-slate-300 bg-white p-5">
         <h3 className="font-display font-semibold text-brand-deep">
           {t.addLanguage}
         </h3>
@@ -221,14 +221,14 @@ export function AgentEditor({
           placeholder={t.localePlaceholder}
           value={newLocale}
           onChange={(e) => setNewLocale(e.target.value)}
-          className="w-40 rounded border border-brand-ink/15 px-3 py-2 text-sm"
+          className="w-40 rounded border border-slate-200 px-3 py-2 text-sm"
         />
         <textarea
           placeholder={t.personaPlaceholder}
           value={newContent}
           onChange={(e) => setNewContent(e.target.value)}
           rows={6}
-          className="w-full rounded border border-brand-ink/15 px-3 py-2 font-mono text-xs"
+          className="w-full rounded border border-slate-200 px-3 py-2 font-mono text-xs"
         />
         <button
           onClick={() => save(newLocale.trim(), newContent)}

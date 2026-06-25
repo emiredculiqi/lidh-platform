@@ -11,7 +11,7 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3001";
 const PROXY = `${APP_URL}/api/proxy`;
 
 // Direct API origin — ONLY for the public, streaming chat endpoint
-// (/v1/chat/web) used by TestChat/DemoChat. Not proxied (@Public + SSE).
+// (/v1/chat/web) used by TestChat/FunnelChat. Not proxied (@Public + SSE).
 export const apiBase =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -68,14 +68,58 @@ export type Thread = {
   channelKind: string;
   status: string;
   aiPaused: boolean;
+  locale: string | null;
+  contactId: string;
   contactName: string | null;
   contactPhone: string | null;
+  contactEmail: string | null;
   messages: {
     role: string;
     contentText: string | null;
     toolName: string | null;
     createdAt: string;
   }[];
+};
+
+export type ContactListItem = {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  source: string | null;
+  conversationCount: number;
+  leadCount: number;
+  lastSeenAt: string;
+};
+
+export type ContactConversation = {
+  id: string;
+  channelKind: string;
+  status: string;
+  locale: string | null;
+  lastMessagePreview: string;
+  messageCount: number;
+  lastMsgAt: string;
+};
+
+export type ContactLead = {
+  id: string;
+  status: string;
+  payload: Record<string, unknown>;
+  capturedAt: string;
+};
+
+export type ContactDetail = {
+  id: string;
+  name: string | null;
+  phone: string | null;
+  email: string | null;
+  source: string | null;
+  locale: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  conversations: ContactConversation[];
+  leads: ContactLead[];
 };
 
 export type Agent = {
@@ -109,6 +153,7 @@ export type Lead = {
   payload: Record<string, unknown>;
   contactName: string | null;
   contactPhone: string | null;
+  contactId: string | null;
   conversationId: string | null;
   capturedAt: string;
 };
@@ -239,7 +284,14 @@ export function makeApi(t: Transport) {
     listConversations: (slug: string) =>
       t.get<ConversationListItem[]>(`/conversations?tenantSlug=${slug}`),
     getThread: (id: string) => t.get<Thread>(`/conversations/${id}`),
+    setConversationAi: (id: string, paused: boolean) =>
+      t.post<{ aiPaused: boolean }>(`/conversations/${id}/ai`, { paused }),
+    replyToConversation: (id: string, text: string) =>
+      t.post<{ ok: true }>(`/conversations/${id}/reply`, { text }),
     listLeads: (slug: string) => t.get<Lead[]>(`/leads?tenantSlug=${slug}`),
+    listContacts: (slug: string) =>
+      t.get<ContactListItem[]>(`/contacts?tenantSlug=${slug}`),
+    getContact: (id: string) => t.get<ContactDetail>(`/contacts/${id}`),
     getUsage: (slug: string) => t.get<Usage>(`/usage?tenantSlug=${slug}`),
     getWebOrigins: (slug: string) =>
       t.get<{ allowedOrigins: string[] }>(`/tenants/${slug}/web-origins`),

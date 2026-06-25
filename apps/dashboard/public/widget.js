@@ -270,6 +270,50 @@
     scrollDown();
   }
 
+  // Receive-stream: once a conversation exists, listen for agent (human)
+  // messages pushed during a takeover and render them live.
+  var agentStreamOpen = false;
+  async function openAgentStream(convId) {
+    if (agentStreamOpen || !convId) return;
+    agentStreamOpen = true;
+    for (;;) {
+      try {
+        var res = await fetch(
+          cfg.api + "/v1/live/widget?conversationId=" + encodeURIComponent(convId)
+        );
+        if (!res.ok || !res.body) throw new Error("stream " + res.status);
+        var reader = res.body.getReader();
+        var dec = new TextDecoder();
+        var buf = "";
+        for (;;) {
+          var r = await reader.read();
+          if (r.done) break;
+          buf += dec.decode(r.value, { stream: true });
+          var parts = buf.split("\n\n");
+          buf = parts.pop();
+          for (var i = 0; i < parts.length; i++) {
+            var ev = "message", data = "";
+            var lines = parts[i].split("\n");
+            for (var j = 0; j < lines.length; j++) {
+              if (lines[j].indexOf("event:") === 0) ev = lines[j].slice(6).trim();
+              else if (lines[j].indexOf("data:") === 0) data += lines[j].slice(5).trim();
+            }
+            if (ev !== "agent") continue;
+            try {
+              var p = JSON.parse(data);
+              if (p.type === "agent_message" && p.text) {
+                addMsg("a", p.text);
+                history.push({ role: "assistant", content: p.text });
+                persist();
+              }
+            } catch (e) {}
+          }
+        }
+      } catch (e) {}
+      await new Promise(function (rs) { setTimeout(rs, 5000); }); // reconnect
+    }
+  }
+
   input.addEventListener("input", function () {
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 160) + "px";
@@ -300,7 +344,7 @@
     typing.innerHTML = '<div class="b"><span></span><span></span><span></span></div>';
     msgs.appendChild(typing);
     scrollDown();
-    var bub = null, acc = "";
+    var bub = null, acc = "", sawEffect = false;
     var entry = { role: "assistant", content: "" };
     function ensureBubble() {
       if (!bub) { if (typing.parentNode) typing.parentNode.removeChild(typing); bub = addMsg("a", ""); }
@@ -336,25 +380,31 @@
           }
           var payload = {};
           try { payload = JSON.parse(data); } catch (e) {}
-          if (evName === "meta" && payload.conversationId) conversationId = payload.conversationId;
-          else if (evName === "text" && payload.delta) {
+          if (evName === "meta" && payload.conversationId) {
+            conversationId = payload.conversationId;
+            openAgentStream(conversationId);
+          } else if (evName === "text" && payload.delta) {
             ensureBubble();
             acc += payload.delta;
             entry.content = acc;
             bub.innerHTML = render(acc);
             scrollDown();
-          } else if (evName === "effect" && payload.type) addEffect(payload.type);
-          else if (evName === "error") throw new Error(payload.message || "error");
+          } else if (evName === "effect" && payload.type) {
+            sawEffect = true;
+            addEffect(payload.type);
+          } else if (evName === "error") throw new Error(payload.message || "error");
         }
       }
-      ensureBubble();
-      if (!acc) {
-        acc = al ? "Më vjen keq, diçka shkoi keq. Provo përsëri." : "Sorry, something went wrong. Please try again.";
-        entry.content = acc;
-        bub.innerHTML = render(acc);
+      if (acc) {
+        history.push(entry);
+        persist();
+      } else if (!sawEffect) {
+        // Genuine empty reply (not a handoff) — show a soft error.
+        ensureBubble();
+        bub.innerHTML = render(
+          al ? "Më vjen keq, diçka shkoi keq. Provo përsëri." : "Sorry, something went wrong. Please try again."
+        );
       }
-      history.push(entry);
-      persist();
     } catch (err) {
       ensureBubble();
       bub.innerHTML = render(al ? "Lidhja dështoi. Provo përsëri." : "Connection failed. Please try again.");

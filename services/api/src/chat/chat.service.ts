@@ -9,6 +9,7 @@ import {
 } from "@lidh/core";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { MailService } from "../common/mail/mail.service";
+import { LiveService } from "../common/live/live.service";
 import { RetrievalService } from "./retrieval.service";
 import {
   PropertySearchService,
@@ -40,6 +41,7 @@ export class ChatService {
     private readonly retrieval: RetrievalService,
     private readonly propertySearch: PropertySearchService,
     private readonly mail: MailService,
+    private readonly live: LiveService,
   ) {}
 
   /**
@@ -155,6 +157,12 @@ export class ChatService {
           channelRef: dto.sessionRef ?? null,
         },
       });
+      // Live: a brand-new conversation just started.
+      this.live.publish(tenant.id, {
+        type: "conversation.started",
+        conversationId: conversation.id,
+        channelKind: channel.kind,
+      });
     }
 
     yield { kind: "meta", conversationId: conversation.id };
@@ -184,6 +192,21 @@ export class ChatService {
         contentText: dto.message,
       },
     });
+    this.live.publish(tenant.id, {
+      type: "message",
+      conversationId: conversation.id,
+      role: "user",
+      preview: dto.message.slice(0, 120),
+    });
+
+    // Human takeover: the AI is paused for this conversation. Store the
+    // visitor's message (done above) and stop — a human replies from the
+    // dashboard, delivered to the widget via its receive-stream.
+    if (conversation.aiPaused) {
+      yield { kind: "effect", effect: { type: "human_handoff" } };
+      yield { kind: "done" };
+      return;
+    }
 
     // ── RAG retrieval (shell-side) ────────────────────────────────────────
     // Use the last couple of user turns as context so a short follow-up
@@ -263,6 +286,12 @@ export class ChatService {
           tokensIn,
           tokensOut,
         },
+      });
+      this.live.publish(tenant.id, {
+        type: "message",
+        conversationId: conversation.id,
+        role: "assistant",
+        preview: assistantText.slice(0, 120),
       });
     }
     await db.conversation.update({

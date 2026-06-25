@@ -4,6 +4,7 @@ import { PrismaModule } from "./common/prisma/prisma.module";
 import { EmbeddingModule } from "./common/embedding/embedding.module";
 import { StorageModule } from "./common/storage/storage.module";
 import { MailModule } from "./common/mail/mail.module";
+import { LiveModule } from "./common/live/live.module";
 import { AuthModule } from "./common/auth/auth.module";
 import { TenantContextModule } from "./common/tenant-context/tenant-context.module";
 import { HealthModule } from "./health/health.module";
@@ -17,6 +18,7 @@ import { WhatsappModule } from "./channels/whatsapp/whatsapp.module";
 import { PersonaPresetsModule } from "./persona-presets/persona-presets.module";
 import { OnboardingModule } from "./onboarding/onboarding.module";
 import { UsageModule } from "./usage/usage.module";
+import { ContactsModule } from "./contacts/contacts.module";
 
 @Module({
   imports: [
@@ -30,6 +32,7 @@ import { UsageModule } from "./usage/usage.module";
     EmbeddingModule,
     StorageModule,
     MailModule,
+    LiveModule,
     AuthModule,
     TenantContextModule,
     HealthModule,
@@ -43,6 +46,7 @@ import { UsageModule } from "./usage/usage.module";
     PersonaPresetsModule,
     OnboardingModule,
     UsageModule,
+    ContactsModule,
   ],
 })
 export class AppModule {}
