@@ -391,7 +391,12 @@
             scrollDown();
           } else if (evName === "effect" && payload.type) {
             sawEffect = true;
-            addEffect(payload.type);
+            // During a human take-over the operator is already replying live
+            // (via the receive-stream), so don't paint "connecting you to a
+            // person" on every visitor message. Other effects still render.
+            if (!(payload.type === "human_handoff" && payload.takeover)) {
+              addEffect(payload.type);
+            }
           } else if (evName === "error") throw new Error(payload.message || "error");
         }
       }

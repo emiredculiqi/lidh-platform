@@ -136,6 +136,7 @@ export function FunnelChat({
     setBusy(true);
     let assistant = "";
     let sawEffect = false;
+    let takeover = false;
     setMsgs((m) => [...m, { role: "assistant", text: "" }]);
 
     const bump = () =>
@@ -179,6 +180,7 @@ export function FunnelChat({
             bump();
           } else if (ev === "effect") {
             sawEffect = true;
+            if (data.type === "human_handoff" && data.takeover) takeover = true;
           } else if (ev === "error") {
             assistant += `\n[error: ${data.message}]`;
             bump();
@@ -196,12 +198,17 @@ export function FunnelChat({
         setMsgs((m) => {
           const c = [...m];
           if (c[c.length - 1]?.role === "assistant" && !c[c.length - 1].text) {
-            // Handoff → "connecting you to a person"; the human's reply then
-            // arrives below via the receive-stream. Otherwise a soft error.
-            c[c.length - 1] = {
-              role: "assistant",
-              text: sawEffect ? t.connecting : t.failed,
-            };
+            if (takeover) {
+              // A human is already replying live (via the receive-stream) —
+              // drop the empty placeholder instead of showing "connecting…".
+              c.pop();
+            } else {
+              // AI-initiated handoff → "connecting"; otherwise a soft error.
+              c[c.length - 1] = {
+                role: "assistant",
+                text: sawEffect ? t.connecting : t.failed,
+              };
+            }
           }
           return c;
         });

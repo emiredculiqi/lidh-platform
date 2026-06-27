@@ -22,7 +22,7 @@ import type { ChatWebRequestDto } from "./dto/chat-web-request.dto";
 export type ChatStreamEvent =
   | { kind: "meta"; conversationId: string }
   | { kind: "text"; delta: string }
-  | { kind: "effect"; effect: { type: string } }
+  | { kind: "effect"; effect: { type: string; takeover?: boolean } }
   | { kind: "done" }
   | { kind: "error"; message: string };
 
@@ -203,7 +203,11 @@ export class ChatService {
     // visitor's message (done above) and stop — a human replies from the
     // dashboard, delivered to the widget via its receive-stream.
     if (conversation.aiPaused) {
-      yield { kind: "effect", effect: { type: "human_handoff" } };
+      // `takeover: true` tells the widget a human is ALREADY handling this
+      // thread (their reply arrives via the receive-stream), so it suppresses
+      // the "connecting you to a person" banner — that's only meaningful for an
+      // AI-initiated handoff, not while an operator is actively replying.
+      yield { kind: "effect", effect: { type: "human_handoff", takeover: true } };
       yield { kind: "done" };
       return;
     }
