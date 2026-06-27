@@ -3,6 +3,7 @@
 // runAgent + types from here. Zero Nest / Prisma / HTTP / env reads.
 
 export { runAgent } from "./runAgent";
+export { extractContact, type ExtractedContact } from "./extractContact";
 export { buildSystemPrompt } from "./prompt";
 export { buildTools } from "./tools";
 export {

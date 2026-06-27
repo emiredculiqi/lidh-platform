@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import {
   runAgent,
+  extractContact,
   type AgentContext,
   type AgentMessage,
   type ToolName,
@@ -203,6 +204,18 @@ export class ChatService {
     // visitor's message (done above) and stop — a human replies from the
     // dashboard, delivered to the widget via its receive-stream.
     if (conversation.aiPaused) {
+      // The agent loop won't run, but still register contact details the
+      // visitor provides — gated extraction, persisted silently in the
+      // background (no reply, no banner). Fire-and-forget so it adds no
+      // latency to the handoff stream.
+      void this.captureDuringTakeover(
+        tenant.id,
+        conversation.id,
+        conversation.contactId,
+        [...history, { role: "user", content: dto.message }],
+        dto.message,
+        agent.modelOverride ?? undefined,
+      );
       // `takeover: true` tells the widget a human is ALREADY handling this
       // thread (their reply arrives via the receive-stream), so it suppresses
       // the "connecting you to a person" banner — that's only meaningful for an
@@ -322,38 +335,13 @@ export class ChatService {
             string,
             string | undefined
           >;
-          if (name || email || phone) {
-            await db.contact.update({
-              where: { id: contactId },
-              data: {
-                name: name ?? undefined,
-                email: email ?? undefined,
-                phone: phone ?? undefined,
-                lastSeenAt: new Date(),
-              },
-            });
-          }
-          await db.lead.create({
-            data: {
-              tenantId,
-              conversationId,
-              contactId,
-              status: "new_",
-              payload: { name, email, phone, notes },
-            },
-          });
-          await db.event.create({
-            data: { tenantId, conversationId, kind: "lead_captured" },
-          });
-          // Notify the business by email (fire-and-forget — must not block
-          // or fail the reply if email is down/unconfigured).
-          void this.mail
-            .notifyLead(tenantId, { name, email, phone, notes }, inv.transcript)
-            .catch((e) =>
-              this.logger.error(
-                `lead email failed: ${e instanceof Error ? e.message : "unknown"}`,
-              ),
-            );
+          await this.persistLead(
+            tenantId,
+            conversationId,
+            contactId,
+            { name, email, phone, notes },
+            inv.transcript,
+          );
           return {
             result:
               "Lead saved to the business dashboard. Thank the visitor and let them know someone will follow up.",
@@ -409,6 +397,125 @@ export class ChatService {
         };
       }
     };
+  }
+
+  /** Shared lead persistence used by both the `capture_lead` tool and the
+   *  silent take-over capture: enrich the conversation's contact, create the
+   *  Lead + Event, and notify the business by email (fire-and-forget). */
+  private async persistLead(
+    tenantId: string,
+    conversationId: string,
+    contactId: string,
+    fields: { name?: string; email?: string; phone?: string; notes?: string },
+    transcript: string,
+  ): Promise<void> {
+    const db = this.prisma.client;
+    const { name, email, phone, notes } = fields;
+    if (name || email || phone) {
+      await db.contact.update({
+        where: { id: contactId },
+        data: {
+          name: name ?? undefined,
+          email: email ?? undefined,
+          phone: phone ?? undefined,
+          lastSeenAt: new Date(),
+        },
+      });
+    }
+    await db.lead.create({
+      data: {
+        tenantId,
+        conversationId,
+        contactId,
+        status: "new_",
+        payload: { name, email, phone, notes },
+      },
+    });
+    await db.event.create({
+      data: { tenantId, conversationId, kind: "lead_captured" },
+    });
+    // Notify the business by email (fire-and-forget — must not block or fail
+    // the reply if email is down/unconfigured).
+    void this.mail
+      .notifyLead(tenantId, { name, email, phone, notes }, transcript)
+      .catch((e) =>
+        this.logger.error(
+          `lead email failed: ${e instanceof Error ? e.message : "unknown"}`,
+        ),
+      );
+  }
+
+  /**
+   * Register contact details a visitor types WHILE A HUMAN HAS TAKEN OVER.
+   * The agentic loop (and thus `capture_lead`) is paused during a take-over,
+   * so we run a cheap, gated extraction here instead — silently: no reply and
+   * no visitor-facing banner, since an operator is already in the thread.
+   *
+   * Fire-and-forget from the request path; errors are swallowed and logged so
+   * they never disturb the handoff stream.
+   */
+  private async captureDuringTakeover(
+    tenantId: string,
+    conversationId: string,
+    contactId: string,
+    messages: AgentMessage[],
+    latestMessage: string,
+    model: string | undefined,
+  ): Promise<void> {
+    try {
+      // Cost gate: only spend an extraction call when the latest message
+      // actually carries a contact signal — an email or a 6+ digit run.
+      const hasSignal =
+        /\S+@\S+\.\S+/.test(latestMessage) ||
+        /\d[\d\s().+-]{5,}\d/.test(latestMessage);
+      if (!hasSignal) return;
+
+      const found = await extractContact({
+        anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+        messages,
+        model,
+      });
+      // Need at least a reachable detail for the lead to be worth creating.
+      if (!found.phone && !found.email) return;
+
+      // Dedup: skip if neither field adds anything new to the contact (e.g.
+      // the visitor just repeated a number they already gave).
+      const contact = await this.prisma.client.contact.findUnique({
+        where: { id: contactId },
+        select: { phone: true, email: true },
+      });
+      const digits = (s?: string | null) => s?.replace(/\D/g, "") || undefined;
+      const lower = (s?: string | null) => s?.trim().toLowerCase() || undefined;
+      const addsPhone =
+        !!found.phone && digits(found.phone) !== digits(contact?.phone);
+      const addsEmail =
+        !!found.email && lower(found.email) !== lower(contact?.email);
+      if (!addsPhone && !addsEmail) return;
+
+      const transcript = messages
+        .slice(-12)
+        .map((m) => `${m.role}: ${m.content}`)
+        .join("\n");
+      await this.persistLead(
+        tenantId,
+        conversationId,
+        contactId,
+        {
+          name: found.name,
+          email: found.email,
+          phone: found.phone,
+          notes: "Captured automatically during human take-over",
+        },
+        transcript,
+      );
+      // Nudge the dashboard so the new contact/lead shows up live.
+      this.live.publish(tenantId, { type: "lead_captured", conversationId });
+      this.logger.log(`take-over capture: lead saved for ${conversationId}`);
+    } catch (e) {
+      this.logger.error(
+        `take-over capture failed: ${e instanceof Error ? e.message : "unknown"}`,
+      );
+    }
   }
 }
 
