@@ -4,11 +4,19 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from "@nestjs/platform-fastify";
-import { Logger, ValidationPipe } from "@nestjs/common";
+import { Logger, ValidationPipe, type LogLevel } from "@nestjs/common";
 import { AppModule } from "./app.module";
 import { setupSwagger } from "./swagger";
 
 async function bootstrap() {
+  // Quiet debug/verbose noise in production (e.g. the per-request auth trace).
+  // Set LOG_DEBUG=1 on the box to temporarily restore full verbosity in prod.
+  const verbose =
+    process.env.NODE_ENV !== "production" || process.env.LOG_DEBUG === "1";
+  const logLevels: LogLevel[] = verbose
+    ? ["log", "warn", "error", "debug", "verbose"]
+    : ["log", "warn", "error"];
+
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
     new FastifyAdapter({
@@ -20,6 +28,7 @@ async function bootstrap() {
       // ample for SMB brochures / price lists.
       bodyLimit: 20 * 1024 * 1024,
     }),
+    { logger: logLevels },
   );
 
   // Version every route under /v1. Lets us ship /v2 later without breaking

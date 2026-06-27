@@ -32,8 +32,9 @@ jobs:
   deploy:
     name: Build + deploy
     runs-on: ubuntu-latest
-    # ~5 min typical, 15 min hard ceiling so a stuck build doesn't hold the queue.
-    timeout-minutes: 15
+    # ~5 min typical. 25 min ceiling leaves headroom for the retry loop below
+    # (a stuck build still can't hold the queue forever).
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -42,11 +43,28 @@ jobs:
       - name: Install flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Deploy to Fly
-        run: >
-          flyctl deploy
-          --config services/api/fly.toml
-          --dockerfile services/api/Dockerfile
-          --remote-only
+      # Retry transient failures. Fly's remote (Depot) builder occasionally
+      # can't allocate in time — "Waiting for depot builder... context deadline
+      # exceeded" — which has nothing to do with our image. `fly deploy` is
+      # idempotent, so retrying is safe and keeps the API from falling behind
+      # the dashboard on a one-off infra hiccup.
+      - name: Deploy to Fly (retry transient builder timeouts)
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::Deploy attempt ${attempt}/3"
+            if flyctl deploy \
+                 --config services/api/fly.toml \
+                 --dockerfile services/api/Dockerfile \
+                 --remote-only; then
+              echo "::endgroup::"
+              echo "Deploy succeeded on attempt ${attempt}."
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "::warning::Deploy attempt ${attempt}/3 failed (often a transient Depot builder allocation timeout). Retrying in 30s..."
+            sleep 30
+          done
+          echo "::error::All 3 deploy attempts failed."
+          exit 1
