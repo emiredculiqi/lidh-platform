@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useLocale } from "@/lib/i18n";
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { NotificationBell } from "./NotificationBell";
 
 // Title + subtitle per section, keyed by the path suffix after /tenants/<slug>.
 const TITLES: { match: (s: string) => boolean; al: [string, string]; en: [string, string] }[] = [
@@ -53,15 +54,7 @@ export function Topbar({ slug }: { slug: string }) {
             <path d="m21 21-4-4" />
           </svg>
         </div>
-        <button
-          className="relative rounded-[10px] border border-slate-200 p-2 text-slate-500 transition hover:text-brand-deep"
-          aria-label="Notifications"
-          type="button"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0" />
-          </svg>
-        </button>
+        <NotificationBell slug={slug} />
         <LanguageToggle />
       </div>
     </header>

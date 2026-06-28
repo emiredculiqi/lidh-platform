@@ -10,6 +10,7 @@ import { assertCanAccessTenant } from "../common/auth/access";
 import type {
   ConversationListItemDto,
   ThreadDto,
+  UnreadSummaryDto,
 } from "./dto/conversation.dto";
 
 /** Read-side for the dashboard inbox. Returns own DTO shapes (no Prisma
@@ -105,24 +106,27 @@ export class ConversationsService {
     if (!tenant) throw new NotFoundException("tenant_not_found");
     assertCanAccessTenant(this.ctx.get(), tenant.id);
 
-    const rows = await db.conversation.findMany({
-      where: {
-        tenantId: tenant.id,
-        ...(includePreview ? {} : { kind: "customer" }),
-      },
-      orderBy: { lastMsgAt: "desc" },
-      take: 100,
-      include: {
-        contact: { select: { name: true, phone: true } },
-        channel: { select: { kind: true } },
-        messages: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          select: { contentText: true },
+    const [rows, unread] = await Promise.all([
+      db.conversation.findMany({
+        where: {
+          tenantId: tenant.id,
+          ...(includePreview ? {} : { kind: "customer" }),
         },
-        _count: { select: { messages: true } },
-      },
-    });
+        orderBy: { lastMsgAt: "desc" },
+        take: 100,
+        include: {
+          contact: { select: { name: true, phone: true } },
+          channel: { select: { kind: true } },
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { contentText: true },
+          },
+          _count: { select: { messages: true } },
+        },
+      }),
+      this.unreadCounts(tenant.id),
+    ]);
 
     return rows.map((c) => ({
       id: c.id,
@@ -136,8 +140,76 @@ export class ConversationsService {
         .replace(/\s+/g, " ")
         .slice(0, 120),
       messageCount: c._count.messages,
+      unreadCount: unread.get(c.id) ?? 0,
       lastMsgAt: c.lastMsgAt,
     }));
+  }
+
+  /** Per-conversation count of unread VISITOR messages (role=user newer than
+   *  the conversation's shared `lastReadAt`). One grouped query — not N+1. */
+  private async unreadCounts(tenantId: string): Promise<Map<string, number>> {
+    const rows = await this.prisma.client.$queryRaw<
+      { conversationId: string; unread: number }[]
+    >`
+      SELECT m."conversationId" AS "conversationId", COUNT(*)::int AS unread
+      FROM "Message" m
+      JOIN "Conversation" c ON c.id = m."conversationId"
+      WHERE c."tenantId" = ${tenantId}
+        AND c.kind::text = 'customer'
+        AND m.role::text = 'user'
+        AND (c."lastReadAt" IS NULL OR m."createdAt" > c."lastReadAt")
+      GROUP BY m."conversationId"
+    `;
+    return new Map(rows.map((r) => [r.conversationId, Number(r.unread)]));
+  }
+
+  /** Mark a conversation read (operator opened the thread) — moves the shared
+   *  read marker to now, clearing its unread count. */
+  async markRead(id: string): Promise<{ ok: true }> {
+    const db = this.prisma.client;
+    const conv = await db.conversation.findUnique({
+      where: { id },
+      select: { tenantId: true },
+    });
+    if (!conv) throw new NotFoundException("conversation_not_found");
+    assertCanAccessTenant(this.ctx.get(), conv.tenantId);
+    await db.conversation.update({
+      where: { id },
+      data: { lastReadAt: new Date() },
+    });
+    return { ok: true };
+  }
+
+  /** Tenant-wide unread summary for the sidebar badge + bell:
+   *  `total` = number of conversations with unread visitor messages. */
+  async unreadSummary(tenantSlug: string): Promise<UnreadSummaryDto> {
+    const db = this.prisma.client;
+    const tenant = await db.tenant.findUnique({ where: { slug: tenantSlug } });
+    if (!tenant) throw new NotFoundException("tenant_not_found");
+    assertCanAccessTenant(this.ctx.get(), tenant.id);
+
+    const counts = await this.unreadCounts(tenant.id);
+    const ids = [...counts.keys()];
+    if (ids.length === 0) return { total: 0, items: [] };
+
+    const convs = await db.conversation.findMany({
+      where: { id: { in: ids } },
+      orderBy: { lastMsgAt: "desc" },
+      select: {
+        id: true,
+        lastMsgAt: true,
+        contact: { select: { name: true, phone: true } },
+        channel: { select: { kind: true } },
+      },
+    });
+    const items = convs.map((c) => ({
+      conversationId: c.id,
+      contactName: c.contact.name ?? c.contact.phone ?? null,
+      channelKind: c.channel.kind,
+      unreadCount: counts.get(c.id) ?? 0,
+      lastMsgAt: c.lastMsgAt,
+    }));
+    return { total: items.length, items };
   }
 
   async getThread(id: string): Promise<ThreadDto> {

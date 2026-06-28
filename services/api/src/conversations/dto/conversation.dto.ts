@@ -15,7 +15,24 @@ export class ConversationListItemDto {
   @ApiProperty({ example: "A bëni dërgesa të dielën?" })
   lastMessagePreview!: string;
   @ApiProperty({ example: 4 }) messageCount!: number;
+  @ApiProperty({ example: 2, description: "Unread visitor messages" })
+  unreadCount!: number;
   @ApiProperty({ example: "2026-05-16T13:00:00.000Z" }) lastMsgAt!: Date;
+}
+
+export class UnreadItemDto {
+  @ApiProperty({ example: "clx_conv1" }) conversationId!: string;
+  @ApiProperty({ example: "Ana B.", nullable: true, type: String })
+  contactName!: string | null;
+  @ApiProperty({ example: "web" }) channelKind!: string;
+  @ApiProperty({ example: 2 }) unreadCount!: number;
+  @ApiProperty({ example: "2026-05-16T13:00:00.000Z" }) lastMsgAt!: Date;
+}
+
+export class UnreadSummaryDto {
+  @ApiProperty({ example: 3, description: "Conversations with unread messages" })
+  total!: number;
+  @ApiProperty({ type: [UnreadItemDto] }) items!: UnreadItemDto[];
 }
 
 export class ThreadMessageDto {

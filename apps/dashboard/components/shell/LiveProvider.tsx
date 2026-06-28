@@ -2,33 +2,55 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { usePathname, useRouter } from "next/navigation";
-import { apiBase } from "@/lib/api-core";
+import { useRouter } from "next/navigation";
+import { apiBase, type Notification } from "@/lib/api-core";
+import { api } from "@/lib/api";
 import { useLocale } from "@/lib/i18n";
 
-type LiveContextValue = { newConvCount: number };
-const LiveContext = createContext<LiveContextValue>({ newConvCount: 0 });
+type LiveContextValue = {
+  /** Conversations with unread visitor messages (sidebar "Bisedat" badge). */
+  unreadTotal: number;
+  /** Recent activity feed (bell dropdown). */
+  notifications: Notification[];
+  /** Feed items newer than the last time the bell was opened. */
+  unseenCount: number;
+  /** Mark the bell feed seen (clears unseenCount). */
+  markNotificationsSeen: () => void;
+  /** Re-fetch unread + notifications (e.g. after marking a thread read). */
+  refresh: () => void;
+};
+
+const LiveContext = createContext<LiveContextValue>({
+  unreadTotal: 0,
+  notifications: [],
+  unseenCount: 0,
+  markNotificationsSeen: () => {},
+  refresh: () => {},
+});
 export const useLive = () => useContext(LiveContext);
 
 type LiveEvent = {
   type: string;
   conversationId?: string;
   channelKind?: string;
-  role?: string;
-  preview?: string;
 };
+
+const SEEN_KEY = "lidh.notifSeen";
 
 /**
  * Opens an authenticated SSE stream to /v1/live and turns tenant events into
- * live UI: a toast + Bisedat badge on new conversations, and a debounced
- * router.refresh() so the inbox list and any open thread update in real time.
+ * live UI: a toast on new conversations, plus debounced re-fetches of the
+ * unread summary (sidebar badge) + notifications feed (bell), and a
+ * router.refresh() so the inbox list/thread update in real time.
  */
 export function LiveProvider({
   slug,
@@ -39,19 +61,47 @@ export function LiveProvider({
 }) {
   const { getToken } = useAuth();
   const router = useRouter();
-  const pathname = usePathname() || "";
   const { locale } = useLocale();
   const al = locale === "al";
 
-  const [newConvCount, setNewConvCount] = useState(0);
+  const [unreadTotal, setUnreadTotal] = useState(0);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [lastSeen, setLastSeen] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
 
-  const onInbox = pathname.startsWith(`/tenants/${slug}/inbox`);
-
-  // Clear the badge while the inbox is open.
+  // Load the "seen" marker once (client-only; survives reloads per browser).
   useEffect(() => {
-    if (onInbox) setNewConvCount(0);
-  }, [onInbox, pathname]);
+    const v = Number(localStorage.getItem(SEEN_KEY) ?? 0);
+    setLastSeen(Number.isFinite(v) ? v : 0);
+  }, []);
+
+  const unseenCount = useMemo(
+    () =>
+      notifications.filter((n) => Date.parse(n.createdAt) > lastSeen).length,
+    [notifications, lastSeen],
+  );
+
+  const markNotificationsSeen = useCallback(() => {
+    const now = Date.now();
+    localStorage.setItem(SEEN_KEY, String(now));
+    setLastSeen(now);
+  }, []);
+
+  const refresh = useCallback(() => {
+    api
+      .getUnread(slug)
+      .then((u) => setUnreadTotal(u.total))
+      .catch(() => {});
+    api
+      .listNotifications(slug)
+      .then(setNotifications)
+      .catch(() => {});
+  }, [slug]);
+
+  // Initial load.
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   // Latest-value handler so the long-lived stream loop never goes stale.
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -59,15 +109,17 @@ export function LiveProvider({
   const handlerRef = useRef<(e: LiveEvent) => void>(() => {});
   handlerRef.current = (e: LiveEvent) => {
     if (e.type === "conversation.started") {
-      if (!onInbox) setNewConvCount((n) => n + 1);
       setToast(al ? "Një bisedë e re ka filluar" : "A new conversation started");
       if (toastTimer.current) clearTimeout(toastTimer.current);
       toastTimer.current = setTimeout(() => setToast(null), 6000);
     }
-    // Debounced refresh re-fetches the current route's server components
-    // (inbox list / open thread) so they reflect the new state.
+    // Debounced: re-fetch unread + notifications and refresh the current route
+    // (inbox list / open thread) so everything reflects the new state.
     if (refreshTimer.current) clearTimeout(refreshTimer.current);
-    refreshTimer.current = setTimeout(() => router.refresh(), 450);
+    refreshTimer.current = setTimeout(() => {
+      refresh();
+      router.refresh();
+    }, 450);
   };
 
   useEffect(() => {
@@ -122,7 +174,6 @@ export function LiveProvider({
     return () => {
       closed = true;
       if (retry) clearTimeout(retry);
-      // Graceful cancel (no AbortError) of any in-flight stream read.
       reader?.cancel().catch(() => {});
     };
     // Reconnect only when the tenant changes.
@@ -130,7 +181,15 @@ export function LiveProvider({
   }, [slug]);
 
   return (
-    <LiveContext.Provider value={{ newConvCount }}>
+    <LiveContext.Provider
+      value={{
+        unreadTotal,
+        notifications,
+        unseenCount,
+        markNotificationsSeen,
+        refresh,
+      }}
+    >
       {children}
       {toast ? (
         <button

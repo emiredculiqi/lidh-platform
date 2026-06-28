@@ -11,6 +11,7 @@ import { ConversationsService } from "./conversations.service";
 import {
   ConversationListItemDto,
   ThreadDto,
+  UnreadSummaryDto,
 } from "./dto/conversation.dto";
 
 class SetAiDto {
@@ -49,11 +50,28 @@ export class ConversationsController {
     return this.conversations.list(tenantSlug, includePreview === "true");
   }
 
+  @Get("unread")
+  @ApiOperation({
+    summary: "Unread summary for the sidebar badge + bell",
+    description: "Conversations with unread visitor messages (newest first).",
+  })
+  @ApiQuery({ name: "tenantSlug", example: "acme-coffee" })
+  @ApiOkResponse({ type: UnreadSummaryDto })
+  unread(@Query("tenantSlug") tenantSlug: string): Promise<UnreadSummaryDto> {
+    return this.conversations.unreadSummary(tenantSlug);
+  }
+
   @Get(":id")
   @ApiOperation({ summary: "Full conversation thread (messages)" })
   @ApiOkResponse({ type: ThreadDto })
   thread(@Param("id") id: string): Promise<ThreadDto> {
     return this.conversations.getThread(id);
+  }
+
+  @Post(":id/read")
+  @ApiOperation({ summary: "Mark a conversation read (operator opened it)" })
+  markRead(@Param("id") id: string): Promise<{ ok: true }> {
+    return this.conversations.markRead(id);
   }
 
   @Post(":id/ai")

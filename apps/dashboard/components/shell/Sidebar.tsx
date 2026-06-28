@@ -33,7 +33,7 @@ export function Sidebar({
 }) {
   const pathname = usePathname() || "";
   const { locale } = useLocale();
-  const { newConvCount } = useLive();
+  const { unreadTotal } = useLive();
   const base = `/tenants/${slug}`;
   const al = locale === "al";
 
@@ -79,9 +79,9 @@ export function Sidebar({
                 <path d={n.icon} />
               </svg>
               <span className="flex-1">{al ? n.al : n.en}</span>
-              {n.id === "inbox" && newConvCount > 0 ? (
+              {n.id === "inbox" && unreadTotal > 0 ? (
                 <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[11px] font-bold text-white">
-                  {newConvCount}
+                  {unreadTotal}
                 </span>
               ) : null}
             </Link>

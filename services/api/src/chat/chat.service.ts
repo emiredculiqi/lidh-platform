@@ -164,6 +164,14 @@ export class ChatService {
         conversationId: conversation.id,
         channelKind: channel.kind,
       });
+      // Persist it to the activity log (powers the notifications feed).
+      await db.event.create({
+        data: {
+          tenantId: tenant.id,
+          conversationId: conversation.id,
+          kind: "conversation_started",
+        },
+      });
     }
 
     yield { kind: "meta", conversationId: conversation.id };
@@ -412,6 +420,13 @@ export class ChatService {
     const db = this.prisma.client;
     const { name, email, phone, notes } = fields;
     if (name || email || phone) {
+      // Was this contact still anonymous before now? If so, this write is the
+      // moment it becomes a real contact → emit a `contact_registered` event.
+      const before = await db.contact.findUnique({
+        where: { id: contactId },
+        select: { name: true, phone: true, email: true },
+      });
+      const wasAnonymous = !before?.name && !before?.phone && !before?.email;
       await db.contact.update({
         where: { id: contactId },
         data: {
@@ -421,6 +436,12 @@ export class ChatService {
           lastSeenAt: new Date(),
         },
       });
+      if (wasAnonymous) {
+        await db.event.create({
+          data: { tenantId, conversationId, kind: "contact_registered" },
+        });
+        this.live.publish(tenantId, { type: "contact_registered", conversationId });
+      }
     }
     await db.lead.create({
       data: {
@@ -434,6 +455,7 @@ export class ChatService {
     await db.event.create({
       data: { tenantId, conversationId, kind: "lead_captured" },
     });
+    this.live.publish(tenantId, { type: "lead_captured", conversationId });
     // Notify the business by email (fire-and-forget — must not block or fail
     // the reply if email is down/unconfigured).
     void this.mail
@@ -508,8 +530,6 @@ export class ChatService {
         },
         transcript,
       );
-      // Nudge the dashboard so the new contact/lead shows up live.
-      this.live.publish(tenantId, { type: "lead_captured", conversationId });
       this.logger.log(`take-over capture: lead saved for ${conversationId}`);
     } catch (e) {
       this.logger.error(

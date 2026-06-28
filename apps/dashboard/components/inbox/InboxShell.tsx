@@ -67,6 +67,9 @@ export function InboxShell({
           ) : (
             shown.map((c) => {
               const active = pathname === `${base}/${c.id}`;
+              // The conversation you're viewing is, by definition, read — don't
+              // badge or bold it (MarkRead keeps the server's read state synced).
+              const unread = c.unreadCount > 0 && !active;
               return (
                 <Link
                   key={c.id}
@@ -90,15 +93,28 @@ export function InboxShell({
                           c.contactPhone ||
                           (al ? "Vizitor anonim" : "Anonymous")}
                       </span>
-                      <span className="flex-none text-[11px] text-slate-400">
+                      <span
+                        className={`flex-none text-[11px] ${
+                          unread ? "font-semibold text-brand-blue" : "text-slate-400"
+                        }`}
+                      >
                         {formatDateTime(c.lastMsgAt)}
                       </span>
                     </div>
-                    <p className="truncate text-[12.5px] text-slate-400">
+                    <p
+                      className={`truncate text-[12.5px] ${
+                        unread ? "font-semibold text-brand-ink" : "text-slate-400"
+                      }`}
+                    >
                       {c.lastMessagePreview || "—"}
                     </p>
-                    <div className="mt-1">
+                    <div className="mt-1 flex items-center justify-between gap-2">
                       <ChannelBadge kind={c.channelKind} />
+                      {unread ? (
+                        <span className="flex-none rounded-full bg-brand-blue px-2 py-0.5 text-[11px] font-bold leading-none text-white">
+                          {c.unreadCount}
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 </Link>

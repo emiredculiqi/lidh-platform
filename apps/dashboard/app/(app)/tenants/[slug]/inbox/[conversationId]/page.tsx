@@ -6,6 +6,7 @@ import { ChannelBadge } from "@/components/ui/ChannelBadge";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { ContactPanel } from "@/components/inbox/ContactPanel";
 import { TakeoverBar } from "@/components/inbox/TakeoverBar";
+import { MarkRead } from "@/components/inbox/MarkRead";
 import { formatTime } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export default async function ThreadPage({
 
   return (
     <div className="flex min-w-0 flex-1">
+      <MarkRead conversationId={thread.id} signal={thread.messages.length} />
       {/* Thread */}
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex flex-none items-center gap-3 border-b border-slate-200 px-5 py-3">

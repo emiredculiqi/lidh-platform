@@ -60,7 +60,29 @@ export type ConversationListItem = {
   contactPhone: string | null;
   lastMessagePreview: string;
   messageCount: number;
+  unreadCount: number;
   lastMsgAt: string;
+};
+
+export type UnreadItem = {
+  conversationId: string;
+  contactName: string | null;
+  channelKind: string;
+  unreadCount: number;
+  lastMsgAt: string;
+};
+
+export type UnreadSummary = {
+  total: number; // conversations with unread messages
+  items: UnreadItem[];
+};
+
+export type Notification = {
+  id: string;
+  kind: "conversation_started" | "contact_registered" | "lead_captured";
+  conversationId: string | null;
+  contactName: string | null;
+  createdAt: string;
 };
 
 export type Thread = {
@@ -288,6 +310,12 @@ export function makeApi(t: Transport) {
       t.post<{ aiPaused: boolean }>(`/conversations/${id}/ai`, { paused }),
     replyToConversation: (id: string, text: string) =>
       t.post<{ ok: true }>(`/conversations/${id}/reply`, { text }),
+    markConversationRead: (id: string) =>
+      t.post<{ ok: true }>(`/conversations/${id}/read`, {}),
+    getUnread: (slug: string) =>
+      t.get<UnreadSummary>(`/conversations/unread?tenantSlug=${slug}`),
+    listNotifications: (slug: string) =>
+      t.get<Notification[]>(`/notifications?tenantSlug=${slug}`),
     listLeads: (slug: string) => t.get<Lead[]>(`/leads?tenantSlug=${slug}`),
     listContacts: (slug: string) =>
       t.get<ContactListItem[]>(`/contacts?tenantSlug=${slug}`),

@@ -9,6 +9,7 @@ export interface LiveEvent {
     | "ai_paused"
     | "ai_resumed"
     | "lead_captured"
+    | "contact_registered"
     | "handoff";
   conversationId: string;
   channelKind?: string;

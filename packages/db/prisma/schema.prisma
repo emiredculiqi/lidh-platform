@@ -80,6 +80,8 @@ enum EventKind {
   agent_paused
   agent_resumed
   conversation_assigned
+  conversation_started
+  contact_registered
   channel_connected
   channel_disconnected
   knowledge_source_indexed
@@ -448,6 +450,10 @@ model Conversation {
   channelRef       String?
   startedAt        DateTime           @default(now())
   lastMsgAt        DateTime           @default(now())
+  // When an operator last opened this thread in the inbox. Unread = visitor
+  // messages newer than this (null = never read → all visitor msgs unread).
+  // Shared/team read state (one marker per conversation, not per user).
+  lastReadAt       DateTime?
 
   tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   channel    Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)

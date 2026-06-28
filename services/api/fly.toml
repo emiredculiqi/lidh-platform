@@ -26,6 +26,14 @@ primary_region = "fra"
 # secrets — set via:  fly secrets set DATABASE_URL=postgresql://... ANTHROPIC_API_KEY=...
 # They are NOT in this file by design.
 
+[deploy]
+  # Apply pending Prisma migrations in a one-off machine BEFORE traffic flips
+  # to the new release. Idempotent (already-applied migrations are skipped) and
+  # a failed migration aborts the deploy — so prod never serves code ahead of
+  # its schema. `prisma` ships in the runtime image as a prod dep of @lidh/db;
+  # DATABASE_URL is injected from Fly secrets into the release machine.
+  release_command = "node_modules/.bin/prisma migrate deploy --schema=node_modules/@lidh/db/prisma/schema.prisma"
+
 [http_service]
   internal_port = 4000
   force_https = true

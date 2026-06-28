@@ -19,6 +19,7 @@ import { PersonaPresetsModule } from "./persona-presets/persona-presets.module";
 import { OnboardingModule } from "./onboarding/onboarding.module";
 import { UsageModule } from "./usage/usage.module";
 import { ContactsModule } from "./contacts/contacts.module";
+import { NotificationsModule } from "./notifications/notifications.module";
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { ContactsModule } from "./contacts/contacts.module";
     OnboardingModule,
     UsageModule,
     ContactsModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}
