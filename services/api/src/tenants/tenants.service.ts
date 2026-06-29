@@ -53,7 +53,7 @@ function normalizeOrigins(origins: string[]): string[] {
 }
 
 /** Default free-trial window for newly created tenants. */
-const TRIAL_DAYS = 15;
+const TRIAL_DAYS = 30;
 const TRIAL_MS = TRIAL_DAYS * 86_400_000;
 
 /**
@@ -149,7 +149,7 @@ export class TenantsService {
       throw new BadRequestException("provide either presetId or personas");
     }
 
-    // Every new tenant starts with a 15-day trial. Admin-created tenants
+    // Every new tenant starts with a 30-day trial. Admin-created tenants
     // can be promoted immediately afterwards via /grant-plan; self-serve
     // tenants live on the trial until they pay.
     const trialEndsAt = new Date(Date.now() + TRIAL_MS);

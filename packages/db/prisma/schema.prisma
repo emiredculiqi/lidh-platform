@@ -28,6 +28,16 @@ enum MembershipRole {
   agent
 }
 
+// Lifecycle of a team invitation (ADR: plan-gated team membership). On the
+// invitee's first sign-in the AuthGuard matches their verified email to a
+// `pending` invite, creates the Membership, and flips it to `accepted`.
+enum InvitationStatus {
+  pending
+  accepted
+  revoked
+  expired
+}
+
 enum ChannelKind {
   web
   whatsapp
@@ -150,6 +160,7 @@ model User {
   updatedAt       DateTime @updatedAt
 
   memberships           Membership[]
+  sentInvitations       Invitation[]   @relation("InvitationInviter")
   assignedConversations Conversation[] @relation("ConversationAssignee")
 
   @@index([clerkId])
@@ -217,6 +228,7 @@ model Tenant {
 
   plan             Plan?             @relation(fields: [planId], references: [id], onDelete: SetNull)
   memberships      Membership[]
+  invitations      Invitation[]
   agents           Agent[]
   agentPersonas    AgentPersona[]
   channels         Channel[]
@@ -249,10 +261,15 @@ model Tenant {
 
 model Plan {
   id                  String   @id @default(cuid())
-  slug                String   @unique // "free", "starter", "pro", "enterprise"
+  slug                String   @unique // "basic", "premium"
   name                String // human-readable
-  priceLekePerMonth   Int      @default(0) // 0 for free
+  // Pricing (EUR, whole euros). No "free" plan — the only free offering is the
+  // 30-day trial (Tenant.trialEndsAt), which is not a Plan row.
+  priceEurPerMonth    Int      @default(0)
+  priceEurPerYear     Int      @default(0) // typically 10x monthly (2 months free)
+  setupFeeEur         Int      @default(0) // one-time onboarding fee
   // Quota dimensions (per calendar month). 0 = unlimited.
+  conversationsPerMonth Int    @default(0) // the billing dimension
   messagesPerMonth    Int      @default(0)
   leadsPerMonth       Int      @default(0)
   // Hard feature caps.
@@ -285,6 +302,30 @@ model Membership {
 
   @@unique([userId, tenantId])
   @@index([tenantId])
+}
+
+// A pending/historical invitation for someone to join a tenant's team. One row
+// per (tenant, email) — re-inviting upserts this row back to `pending`. Seat
+// usage = active memberships + `pending` invitations, capped by the tenant's
+// effective plan (Plan.maxTeamMembers; trial = Premium-level). Roles via invite
+// are `admin` or `agent` only — the `owner` is set by a platform admin.
+model Invitation {
+  id          String           @id @default(cuid())
+  tenantId    String
+  email       String
+  role        MembershipRole   @default(agent)
+  status      InvitationStatus @default(pending)
+  invitedById String? // User.id of the inviter; null if platform-admin/system
+  expiresAt   DateTime
+  createdAt   DateTime         @default(now())
+  acceptedAt  DateTime?
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invitedBy User?  @relation("InvitationInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([email])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

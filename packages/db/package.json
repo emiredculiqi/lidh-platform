@@ -23,6 +23,7 @@
     "db:studio": "prisma studio",
     "db:format": "prisma format",
     "db:seed": "tsx prisma/seed.ts",
+    "db:seed:plans": "tsx prisma/seed-plans.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

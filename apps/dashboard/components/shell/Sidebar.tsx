@@ -20,22 +20,34 @@ const NAV: Item[] = [
   { id: "agent", suffix: "/agent", al: "Asistenti AI", en: "AI Assistant", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zM2 12h3m14 0h3M12 2v3m0 14v3" },
 ];
 
+// Team management — only shown to owner/admin (or platform admin).
+const TEAM_ITEM: Item = {
+  id: "team",
+  suffix: "/team",
+  al: "Ekipi",
+  en: "Team",
+  icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75",
+};
+
 export function Sidebar({
   slug,
   tenantName,
   userLabel,
   trialDays,
+  canManageTeam,
 }: {
   slug: string;
   tenantName: string;
   userLabel: string;
   trialDays: number | null;
+  canManageTeam: boolean;
 }) {
   const pathname = usePathname() || "";
   const { locale } = useLocale();
   const { unreadTotal } = useLive();
   const base = `/tenants/${slug}`;
   const al = locale === "al";
+  const nav = canManageTeam ? [...NAV, TEAM_ITEM] : NAV;
 
   return (
     <aside className="sticky top-0 hidden h-screen w-[244px] flex-shrink-0 flex-col border-r border-slate-200 bg-white px-4 py-5 md:flex">
@@ -49,7 +61,7 @@ export function Sidebar({
         {al ? "Menu" : "Menu"}
       </div>
       <nav className="flex flex-col gap-1">
-        {NAV.map((n) => {
+        {nav.map((n) => {
           const href = base + n.suffix;
           const active =
             n.suffix === "" ? pathname === base : pathname.startsWith(href);

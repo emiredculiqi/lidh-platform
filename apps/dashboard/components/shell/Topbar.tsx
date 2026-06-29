@@ -14,6 +14,7 @@ const TITLES: { match: (s: string) => boolean; al: [string, string]; en: [string
   { match: (s) => s.startsWith("/leads"), al: ["Klientë potencialë", "Kontaktet e kapura nga asistenti"], en: ["Leads", "Contacts captured by the assistant"] },
   { match: (s) => s.startsWith("/developer"), al: ["Integrime", "Kanale, widget dhe origjina për zhvilluesit"], en: ["Integrations", "Channels, widget and origins for developers"] },
   { match: (s) => s.startsWith("/agent"), al: ["Asistenti AI", "Konfiguro personën, tonin dhe njohuritë"], en: ["AI Assistant", "Configure persona, tone and knowledge"] },
+  { match: (s) => s.startsWith("/team"), al: ["Ekipi", "Anëtarët e ekipit dhe ftesat"], en: ["Team", "Team members and invitations"] },
   { match: (s) => s.startsWith("/usage"), al: ["Përdorimi", "Sa po përdoret asistenti këtë muaj"], en: ["Usage", "How much the assistant is used this month"] },
   { match: (s) => s.startsWith("/test"), al: ["Testo agjentin", "Provoje asistentin para se ta nisësh"], en: ["Test agent", "Try the assistant before going live"] },
 ];

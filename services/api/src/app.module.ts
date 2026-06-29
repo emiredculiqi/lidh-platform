@@ -20,6 +20,7 @@ import { OnboardingModule } from "./onboarding/onboarding.module";
 import { UsageModule } from "./usage/usage.module";
 import { ContactsModule } from "./contacts/contacts.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { MembersModule } from "./members/members.module";
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { NotificationsModule } from "./notifications/notifications.module";
     UsageModule,
     ContactsModule,
     NotificationsModule,
+    MembersModule,
   ],
 })
 export class AppModule {}

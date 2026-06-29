@@ -150,6 +150,37 @@ export class AuthGuard implements CanActivate {
               pending.map((t) => t.slug).join(", "),
           );
         }
+
+        // Team invites: accept any pending, non-expired invitations for this
+        // email — create the membership with the invited role and mark the
+        // invite accepted. Same email-match mechanism as the owner binding.
+        const invites = await db.invitation.findMany({
+          where: {
+            email: { equals: email, mode: "insensitive" },
+            status: "pending",
+            expiresAt: { gt: new Date() },
+          },
+          select: { id: true, tenantId: true, role: true },
+        });
+        if (invites.length > 0) {
+          await db.$transaction([
+            db.membership.createMany({
+              data: invites.map((inv) => ({
+                userId: user!.id,
+                tenantId: inv.tenantId,
+                role: inv.role,
+              })),
+              skipDuplicates: true,
+            }),
+            db.invitation.updateMany({
+              where: { id: { in: invites.map((i) => i.id) } },
+              data: { status: "accepted", acceptedAt: new Date() },
+            }),
+          ]);
+          this.logger.log(
+            `accepted ${invites.length} team invite(s) for ${email}`,
+          );
+        }
       } catch (err) {
         this.logger.error(
           `JIT provisioning failed for clerkId=${clerkId}: ${

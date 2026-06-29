@@ -19,10 +19,19 @@ export default async function TenantLayout({
   let tenantName = slug;
   let trialDays: number | null = null;
   let userLabel = "";
+  let canManageTeam = false;
   try {
     const [tenant, me] = await Promise.all([api.getTenant(slug), api.me()]);
     tenantName = tenant.name;
     userLabel = me.user.name || me.user.email || "";
+    // Owner/admin (or platform admin) can manage the team — gates the nav item.
+    canManageTeam =
+      me.user.isPlatformAdmin ||
+      me.memberships.some(
+        (m) =>
+          m.tenant.slug === slug &&
+          (m.role === "owner" || m.role === "admin"),
+      );
     if (tenant.trialEndsAt && !tenant.planId) {
       const ms = new Date(tenant.trialEndsAt).getTime() - Date.now();
       trialDays = ms > 0 ? Math.ceil(ms / 86_400_000) : null;
@@ -39,6 +48,7 @@ export default async function TenantLayout({
           tenantName={tenantName}
           userLabel={userLabel}
           trialDays={trialDays}
+          canManageTeam={canManageTeam}
         />
         <main className="flex min-w-0 flex-1 flex-col">
           <Topbar slug={slug} />

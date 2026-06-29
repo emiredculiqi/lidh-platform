@@ -22,7 +22,7 @@ export type Tenant = {
   defaultLocale: string;
   // Permanent public funnel page — shape: ${APP_BASE_URL}/b/<slug>
   funnelUrl: string;
-  // End of free trial (15d on signup). null = trial cleared by a paid plan.
+  // End of free trial (30d on signup). null = trial cleared by a paid plan.
   trialEndsAt: string | null;
   // FK to Plan when admin has assigned one (manual, post-payment).
   planId: string | null;
@@ -83,6 +83,29 @@ export type Notification = {
   conversationId: string | null;
   contactName: string | null;
   createdAt: string;
+};
+
+export type TeamMember = {
+  userId: string;
+  email: string;
+  name: string | null;
+  role: "owner" | "admin" | "agent";
+  joinedAt: string;
+};
+
+export type TeamInvitation = {
+  id: string;
+  email: string;
+  role: "admin" | "agent";
+  status: string;
+  createdAt: string;
+  expiresAt: string;
+};
+
+export type TeamOverview = {
+  seats: { used: number; max: number };
+  members: TeamMember[];
+  invitations: TeamInvitation[];
 };
 
 export type Thread = {
@@ -316,6 +339,19 @@ export function makeApi(t: Transport) {
       t.get<UnreadSummary>(`/conversations/unread?tenantSlug=${slug}`),
     listNotifications: (slug: string) =>
       t.get<Notification[]>(`/notifications?tenantSlug=${slug}`),
+    getTeam: (slug: string) => t.get<TeamOverview>(`/tenants/${slug}/team`),
+    inviteMember: (slug: string, email: string, role: "admin" | "agent") =>
+      t.post<{ ok: true }>(`/tenants/${slug}/team/invite`, { email, role }),
+    setMemberRole: (slug: string, userId: string, role: "admin" | "agent") =>
+      t.post<{ ok: true }>(`/tenants/${slug}/team/members/${userId}/role`, {
+        role,
+      }),
+    removeMember: (slug: string, userId: string) =>
+      t.del<{ ok: true }>(`/tenants/${slug}/team/members/${userId}`),
+    resendInvite: (slug: string, id: string) =>
+      t.post<{ ok: true }>(`/tenants/${slug}/team/invitations/${id}/resend`, {}),
+    revokeInvite: (slug: string, id: string) =>
+      t.del<{ ok: true }>(`/tenants/${slug}/team/invitations/${id}`),
     listLeads: (slug: string) => t.get<Lead[]>(`/leads?tenantSlug=${slug}`),
     listContacts: (slug: string) =>
       t.get<ContactListItem[]>(`/contacts?tenantSlug=${slug}`),

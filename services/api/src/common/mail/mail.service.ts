@@ -151,6 +151,46 @@ export class MailService {
     return { to, name: tenant.name, slug: tenant.slug };
   }
 
+  /**
+   * Invite someone to join a tenant's team. Sent directly to the invitee (not
+   * the owner). They create a Lidh.al account with this email; the AuthGuard
+   * binds the invite to their account on first sign-in (email match).
+   */
+  async sendInvitation(opts: {
+    to: string;
+    businessName: string;
+    role: string; // "admin" | "agent"
+    inviterName?: string | null;
+  }): Promise<void> {
+    const biz = esc(opts.businessName);
+    const roleAl = opts.role === "admin" ? "administrator" : "anëtar";
+    const roleEn = opts.role === "admin" ? "an administrator" : "a member";
+    const by = opts.inviterName ? ` nga ${esc(opts.inviterName)}` : "";
+    const signUp = `${this.dashboardUrl}/sign-up`;
+    const subject = `Je ftuar në ekipin e ${opts.businessName} · Lidh.al`;
+    const text =
+      `Je ftuar${opts.inviterName ? ` nga ${opts.inviterName}` : ""} të bashkohesh me ekipin e "${opts.businessName}" në Lidh.al si ${roleAl}.\n` +
+      `Krijo llogarinë me këtë email (${opts.to}): ${signUp}\n` +
+      `Pas regjistrimit ke akses automatikisht në panel.\n\n` +
+      `— — —\n\n` +
+      `You've been invited to join the "${opts.businessName}" team on Lidh.al as ${roleEn}.\n` +
+      `Create your account with this email (${opts.to}): ${signUp}\n` +
+      `You'll get access to the dashboard automatically after signing up.`;
+    const html = `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto">
+      <div style="background:linear-gradient(135deg,#0B2A6B,#1E5FDB 35%,#22D3EE 70%,#5EEAD4);padding:22px 24px;border-radius:14px 14px 0 0;color:#fff">
+        <div style="font-size:13px;opacity:.85">Lidh.al</div>
+        <div style="font-size:19px;font-weight:700;margin-top:2px">Ftesë në ekip · Team invite</div>
+      </div>
+      <div style="border:1px solid #e2e8f0;border-top:none;border-radius:0 0 14px 14px;padding:24px;color:#0A0A23">
+        <p style="margin:0 0 12px">Je ftuar${by} të bashkohesh me ekipin e <b>${biz}</b> në Lidh.al si <b>${roleAl}</b>.</p>
+        <p style="margin:0 0 18px;color:#475569;font-size:14px">You've been invited to join <b>${biz}</b> on Lidh.al as ${roleEn}. Sign up with <b>${esc(opts.to)}</b>.</p>
+        <a href="${signUp}" style="display:inline-block;background:#1E5FDB;color:#fff;text-decoration:none;font-weight:600;padding:11px 20px;border-radius:10px">Krijo llogarinë · Create account</a>
+        <p style="margin:18px 0 0;color:#94a3b8;font-size:12px">Pas regjistrimit me këtë email, aksesi jepet automatikisht.</p>
+      </div>
+    </div>`;
+    await this.send({ to: opts.to, subject, html, text });
+  }
+
   private async send(msg: {
     to: string;
     subject: string;
