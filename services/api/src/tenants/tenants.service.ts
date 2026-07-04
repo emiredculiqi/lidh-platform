@@ -370,26 +370,36 @@ export class TenantsService {
     const resolved = await this.resolveOwnerEmail(email);
 
     if (resolved.userId) {
-      // User exists → bind them now. skipDuplicates handles the case where
-      // they're already a member of this tenant (idempotent re-assignment).
+      // Transfer ownership: any current owner steps down to admin (keeps
+      // access, not the owner slot), and the target user becomes the sole
+      // owner. Idempotent if they're already the owner.
       await db.$transaction([
-        db.membership.createMany({
-          data: [
-            { userId: resolved.userId, tenantId: id, role: "owner" as const },
-          ],
-          skipDuplicates: true,
+        db.membership.updateMany({
+          where: { tenantId: id, role: "owner", userId: { not: resolved.userId } },
+          data: { role: "admin" },
         }),
-        db.tenant.update({
-          where: { id },
-          data: { pendingOwnerEmail: null },
+        db.membership.upsert({
+          where: { userId_tenantId: { userId: resolved.userId, tenantId: id } },
+          update: { role: "owner" },
+          create: { userId: resolved.userId, tenantId: id, role: "owner" },
         }),
+        db.tenant.update({ where: { id }, data: { pendingOwnerEmail: null } }),
       ]);
       this.logger.log(`tenant ${t.slug} (${id}) owner set: existing user ${email}`);
     } else {
-      await db.tenant.update({
-        where: { id },
-        data: { pendingOwnerEmail: resolved.pendingEmail },
-      });
+      // New person (no account yet) → they're the incoming owner. The current
+      // owner steps down to admin so `ownerEmail` clears and the pending owner
+      // is what shows; the AuthGuard binds them as owner on first sign-in.
+      await db.$transaction([
+        db.membership.updateMany({
+          where: { tenantId: id, role: "owner" },
+          data: { role: "admin" },
+        }),
+        db.tenant.update({
+          where: { id },
+          data: { pendingOwnerEmail: resolved.pendingEmail },
+        }),
+      ]);
       this.logger.log(
         `tenant ${t.slug} (${id}) owner pending: ${resolved.pendingEmail}`,
       );

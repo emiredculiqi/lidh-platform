@@ -96,6 +96,8 @@ export class KnowledgeService {
       include: { _count: { select: { chunks: true } } },
     });
     if (!source) throw new NotFoundException("source_not_found");
+    // Guard cross-tenant reads — the row is fetched by global id.
+    assertCanAccessTenant(this.ctx.get(), source.tenantId);
     return source;
   }
 
@@ -190,6 +192,8 @@ export class KnowledgeService {
     const db = this.prisma.client;
     const source = await db.knowledgeSource.findUnique({ where: { id } });
     if (!source) throw new NotFoundException("source_not_found");
+    // Guard cross-tenant reingest — the row is fetched by global id.
+    assertCanAccessTenant(this.ctx.get(), source.tenantId);
 
     if (source.kind === "url" || source.kind === "sitemap") {
       void this.ingest(id).catch((err) =>

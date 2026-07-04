@@ -31,14 +31,83 @@ export class AgentsService {
       select: { locale: true, content: true },
     });
 
+    const businessFacts =
+      (tenant.settings as { businessFacts?: string } | null)?.businessFacts ??
+      null;
+
     return {
       id: agent.id,
       name: agent.name,
       defaultLocale: agent.defaultLocale,
       toolsEnabled: agent.toolsEnabled,
       modelOverride: agent.modelOverride,
+      businessFacts,
       personas,
     };
+  }
+
+  /** Resolve the tenant's primary agent (with access check). */
+  private async resolveAgent(tenantSlug: string) {
+    const db = this.prisma.client;
+    const tenant = await db.tenant.findUnique({ where: { slug: tenantSlug } });
+    if (!tenant) throw new NotFoundException("tenant_not_found");
+    assertCanAccessTenant(this.ctx.get(), tenant.id);
+    const agent = await db.agent.findFirst({
+      where: { tenantId: tenant.id },
+      orderBy: { createdAt: "asc" },
+    });
+    if (!agent) throw new NotFoundException("agent_not_found");
+    return { tenant, agent };
+  }
+
+  /** Set the agent's tool on/off flags (capture_lead, request_human_handoff,
+   *  search_properties, …). Read fresh per request, so next message applies. */
+  async setTools(
+    tenantSlug: string,
+    tools: Record<string, boolean>,
+  ): Promise<AgentResponseDto> {
+    const { agent } = await this.resolveAgent(tenantSlug);
+    await this.prisma.client.agent.update({
+      where: { id: agent.id },
+      data: { toolsEnabled: tools },
+    });
+    return this.getByTenant(tenantSlug);
+  }
+
+  /** Set the stable business facts (merged into Tenant.settings). */
+  async setBusinessFacts(
+    tenantSlug: string,
+    businessFacts: string,
+  ): Promise<AgentResponseDto> {
+    const { tenant } = await this.resolveAgent(tenantSlug);
+    const settings = {
+      ...((tenant.settings as Record<string, unknown> | null) ?? {}),
+      businessFacts,
+    };
+    await this.prisma.client.tenant.update({
+      where: { id: tenant.id },
+      data: { settings },
+    });
+    return this.getByTenant(tenantSlug);
+  }
+
+  /** Set the default locale (Agent + Tenant kept in sync). */
+  async setDefaultLocale(
+    tenantSlug: string,
+    locale: string,
+  ): Promise<AgentResponseDto> {
+    const { tenant, agent } = await this.resolveAgent(tenantSlug);
+    await this.prisma.client.$transaction([
+      this.prisma.client.agent.update({
+        where: { id: agent.id },
+        data: { defaultLocale: locale },
+      }),
+      this.prisma.client.tenant.update({
+        where: { id: tenant.id },
+        data: { defaultLocale: locale },
+      }),
+    ]);
+    return this.getByTenant(tenantSlug);
   }
 
   /**

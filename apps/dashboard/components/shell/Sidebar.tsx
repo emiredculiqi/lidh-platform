@@ -17,7 +17,7 @@ const NAV: Item[] = [
   { id: "calendar", suffix: "/calendar", al: "Kalendari", en: "Calendar", icon: "M3 5h18v16H3V5zm0 5h18M8 3v4m8-4v4" },
   { id: "leads", suffix: "/leads", al: "Klientë", en: "Leads", icon: "M16 11a4 4 0 10-8 0 4 4 0 008 0zM4 21a8 8 0 0116 0" },
   { id: "developer", suffix: "/developer", al: "Integrime", en: "Integrations", icon: "M10 13a5 5 0 007 0l3-3a5 5 0 00-7-7l-1 1m-2 6a5 5 0 00-7 0l-3 3a5 5 0 007 7l1-1" },
-  { id: "agent", suffix: "/agent", al: "Asistenti AI", en: "AI Assistant", icon: "M12 8a4 4 0 100 8 4 4 0 000-8zM2 12h3m14 0h3M12 2v3m0 14v3" },
+  { id: "test", suffix: "/test", al: "Testo agjentin", en: "Test agent", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" },
 ];
 
 // Team management — only shown to owner/admin (or platform admin).

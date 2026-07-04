@@ -1,13 +1,18 @@
 import { Body, Controller, Get, Put, Query } from "@nestjs/common";
 import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { AgentsService } from "./agents.service";
+import { PlatformAdminOnly } from "../common/auth/platform-admin.decorator";
 import {
   AgentResponseDto,
+  SetBusinessFactsDto,
+  SetDefaultLocaleDto,
   SetModelDto,
+  SetToolsDto,
   UpsertPersonaDto,
 } from "./dto/agent.dto";
 
 @ApiTags("Agents")
+@PlatformAdminOnly() // ALL agent config is platform-admin-only (managed service)
 @Controller("agents")
 export class AgentsController {
   constructor(private readonly agents: AgentsService) {}
@@ -48,5 +53,35 @@ export class AgentsController {
   @ApiOkResponse({ type: AgentResponseDto })
   setModel(@Body() dto: SetModelDto): Promise<AgentResponseDto> {
     return this.agents.setModel(dto.tenantSlug, dto.model ?? null);
+  }
+
+  @Put("tools")
+  @ApiOperation({
+    summary: "Set the agent's tool flags (platform admin)",
+    description: "Sets Agent.toolsEnabled. Takes effect on the next message.",
+  })
+  @ApiOkResponse({ type: AgentResponseDto })
+  setTools(@Body() dto: SetToolsDto): Promise<AgentResponseDto> {
+    return this.agents.setTools(dto.tenantSlug, dto.tools);
+  }
+
+  @Put("business-facts")
+  @ApiOperation({
+    summary: "Set the stable business facts (platform admin)",
+    description: "Merged into Tenant.settings; injected into every prompt.",
+  })
+  @ApiOkResponse({ type: AgentResponseDto })
+  setBusinessFacts(@Body() dto: SetBusinessFactsDto): Promise<AgentResponseDto> {
+    return this.agents.setBusinessFacts(dto.tenantSlug, dto.businessFacts);
+  }
+
+  @Put("default-locale")
+  @ApiOperation({
+    summary: "Set the agent's default locale (platform admin)",
+    description: "Updates Agent + Tenant defaultLocale.",
+  })
+  @ApiOkResponse({ type: AgentResponseDto })
+  setDefaultLocale(@Body() dto: SetDefaultLocaleDto): Promise<AgentResponseDto> {
+    return this.agents.setDefaultLocale(dto.tenantSlug, dto.locale);
   }
 }

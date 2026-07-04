@@ -118,11 +118,12 @@ export class TenantsController {
   }
 
   @Get("tenants/:slug/web-origins")
+  @PlatformAdminOnly()
   @ApiOperation({
-    summary: "Get the chat widget's allowed origins",
+    summary: "Get the chat widget's allowed origins (platform admin)",
     description:
       "Origins permitted to embed this tenant's widget (empty = open). " +
-      "Available to the tenant owner/admin, not platform-admin only.",
+      "Managed from the admin console's Channels tab.",
   })
   getWebOrigins(
     @Param("slug") slug: string,
@@ -131,8 +132,9 @@ export class TenantsController {
   }
 
   @Put("tenants/:slug/web-origins")
+  @PlatformAdminOnly()
   @ApiOperation({
-    summary: "Set the chat widget's allowed origins",
+    summary: "Set the chat widget's allowed origins (platform admin)",
     description:
       "Replaces the allow-list. Empty array = open to any site. Lidh.al's " +
       "own funnel/dashboard origins are always allowed regardless.",

@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsIn, IsOptional, IsString, MinLength } from "class-validator";
+import {
+  IsIn,
+  IsObject,
+  IsOptional,
+  IsString,
+  MinLength,
+} from "class-validator";
 import { SELECTABLE_MODELS } from "@lidh/core";
 
 const MODEL_IDS = SELECTABLE_MODELS.map((m) => m.id);
@@ -27,6 +33,13 @@ export class AgentResponseDto {
     type: String,
   })
   modelOverride!: string | null;
+  @ApiProperty({
+    description: "Stable business facts injected into every prompt.",
+    nullable: true,
+    type: String,
+    example: "Open Mon–Sat 9–18. Address: Rr. Myslym Shyri, Tirana.",
+  })
+  businessFacts!: string | null;
   @ApiProperty({ type: [AgentPersonaDto] }) personas!: AgentPersonaDto[];
 }
 
@@ -69,4 +82,50 @@ export class UpsertPersonaDto {
   @IsString()
   @MinLength(10)
   content!: string;
+}
+
+export class SetToolsDto {
+  @ApiProperty({ example: "acme-coffee" })
+  @IsString()
+  @MinLength(1)
+  tenantSlug!: string;
+
+  @ApiProperty({
+    description: "Tool on/off flags to persist on the agent.",
+    example: {
+      capture_lead: true,
+      request_human_handoff: true,
+      search_properties: false,
+    },
+  })
+  @IsObject()
+  tools!: Record<string, boolean>;
+}
+
+export class SetBusinessFactsDto {
+  @ApiProperty({ example: "acme-coffee" })
+  @IsString()
+  @MinLength(1)
+  tenantSlug!: string;
+
+  @ApiProperty({
+    description:
+      "Stable facts injected into every prompt (hours, address, policies). " +
+      "Empty string clears it.",
+    example: "Open Mon–Sat 9–18. Free delivery over €30.",
+  })
+  @IsString()
+  businessFacts!: string;
+}
+
+export class SetDefaultLocaleDto {
+  @ApiProperty({ example: "acme-coffee" })
+  @IsString()
+  @MinLength(1)
+  tenantSlug!: string;
+
+  @ApiProperty({ description: "Lidh.al locale code.", example: "al" })
+  @IsString()
+  @MinLength(2)
+  locale!: string;
 }

@@ -15,6 +15,7 @@ import {
 } from "@nestjs/swagger";
 import type { KnowledgeSource } from "@lidh/db";
 import { KnowledgeService } from "./knowledge.service";
+import { PlatformAdminOnly } from "../common/auth/platform-admin.decorator";
 import { CreateSourceDto } from "./dto/create-source.dto";
 import { TextSourceDto, UploadDocDto } from "./dto/text-source.dto";
 import { SourceResponseDto } from "./dto/source-response.dto";
@@ -22,6 +23,7 @@ import { SourceResponseDto } from "./dto/source-response.dto";
 type SourceWithCount = KnowledgeSource & { _count: { chunks: number } };
 
 @ApiTags("Knowledge")
+@PlatformAdminOnly() // knowledge curation is platform-admin-only (managed service)
 @Controller("knowledge/sources")
 export class KnowledgeController {
   constructor(private readonly knowledge: KnowledgeService) {}

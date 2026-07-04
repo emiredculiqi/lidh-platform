@@ -1,26 +1,13 @@
-import { api } from "@/lib/api-server";
-import { AgentEditor } from "@/components/AgentEditor";
-import { T } from "@/components/T";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
+// AI-assistant configuration moved to the platform-admin console
+// (/admin/businesses/<slug>/assistant). The business panel no longer
+// configures the agent — bounce any stale link to the dashboard.
 export default async function AgentPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const agent = await api.getAgent(slug);
-
-  return (
-    <div className="space-y-5">
-      <p className="max-w-2xl text-sm text-slate-500">
-        <T
-          al="Ndrysho personalitetin sipas gjuhës dhe modelin. Ndryshimet aplikohen në mesazhin tjetër — provoji te skeda Testo agjentin."
-          en="Edit the persona per language and the model. Changes apply on the next message — try them in the Test agent tab."
-        />
-      </p>
-      <AgentEditor tenantSlug={slug} initial={agent} />
-    </div>
-  );
+  redirect(`/tenants/${slug}`);
 }
