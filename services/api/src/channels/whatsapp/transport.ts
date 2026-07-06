@@ -3,10 +3,9 @@
  *
  * The WhatsApp channel logic depends only on this interface. Concrete
  * providers implement it:
- *   - StubWhatsAppTransport  → dev/testing (logs, no network)
- *   - WhatChimpTransport     → M4.4, AFTER validating WhatChimp is a
- *                              pass-through (memory: project_whatsapp_provider)
- *   - MetaCloudTransport     → fallback if WhatChimp can't be pass-through
+ *   - MetaCloudTransport     → production: direct Meta WhatsApp Cloud API
+ *                              (we are a Meta Tech Provider; coexistence).
+ *   - StubWhatsAppTransport  → dev/testing (logs, no network, no creds)
  *
  * Swapping providers = swapping the binding in WhatsappModule; the service,
  * webhook, and the @lidh/core agent never change.
@@ -34,8 +33,14 @@ export interface InboundWhatsAppMessage {
  * service reads it from the resolved whatsapp Channel's config.
  */
 export interface OutboundContext {
-  /** Meta WhatsApp Business phone_number_id (used by WhatChimp / Meta Cloud). */
+  /** Meta WhatsApp Business phone_number_id (used by Meta Cloud). */
   phoneNumberId?: string;
+  /**
+   * The tenant's Meta access token (WABA-scoped), decrypted by the service
+   * from Channel.credentialsEnc. Kept out of the transport so the transport
+   * stays a pure Graph client with no DB/crypto dependency.
+   */
+  accessToken?: string;
 }
 
 export interface WhatsAppTransport {

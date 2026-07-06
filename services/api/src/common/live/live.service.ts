@@ -10,7 +10,8 @@ export interface LiveEvent {
     | "ai_resumed"
     | "lead_captured"
     | "contact_registered"
-    | "handoff";
+    | "handoff"
+    | "delivery_failed"; // an outbound (e.g. WhatsApp) send failed
   conversationId: string;
   channelKind?: string;
   contactName?: string | null;

@@ -6,8 +6,8 @@ import type { WhatsAppTransport } from "./transport";
  * instead of hitting a provider, so the full inbound → @lidh/core agent →
  * outbound pipeline is verifiable with zero credentials.
  *
- * Replaced by WhatChimpTransport in M4.4 once WhatChimp is validated as a
- * pass-through (see ADR-004 / project_whatsapp_provider memory).
+ * MetaCloudTransport takes over in production when META_APP_ID is set
+ * (see WhatsappModule's transport factory).
  */
 @Injectable()
 export class StubWhatsAppTransport implements WhatsAppTransport {

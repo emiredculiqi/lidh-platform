@@ -214,6 +214,20 @@ export type Usage = {
   tokensOut: number;
 };
 
+export type ChannelStatus = {
+  kind: string; // "web" | "whatsapp" | "instagram"
+  status: string; // "pending" | "connected" | "disconnected" | "error"
+  displayPhoneNumber?: string;
+  coexistence?: boolean;
+};
+
+export type ConnectWhatsAppInput = {
+  code: string;
+  wabaId: string;
+  phoneNumberId: string;
+  coexistence?: boolean;
+};
+
 export type Transport = {
   get: <T>(path: string) => Promise<T>;
   post: <T>(path: string, body: unknown) => Promise<T>;
@@ -357,6 +371,15 @@ export function makeApi(t: Transport) {
       t.get<ContactListItem[]>(`/contacts?tenantSlug=${slug}`),
     getContact: (id: string) => t.get<ContactDetail>(`/contacts/${id}`),
     getUsage: (slug: string) => t.get<Usage>(`/usage?tenantSlug=${slug}`),
+    getChannels: (slug: string) =>
+      t.get<ChannelStatus[]>(`/tenants/${slug}/channels`),
+    connectWhatsApp: (slug: string, body: ConnectWhatsAppInput) =>
+      t.post<ChannelStatus>(`/tenants/${slug}/channels/whatsapp/connect`, body),
+    disconnectWhatsApp: (slug: string) =>
+      t.post<ChannelStatus>(
+        `/tenants/${slug}/channels/whatsapp/disconnect`,
+        {},
+      ),
     getWebOrigins: (slug: string) =>
       t.get<{ allowedOrigins: string[] }>(`/tenants/${slug}/web-origins`),
     setWebOrigins: (slug: string, allowedOrigins: string[]) =>

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from "@nestjs/common";
 import {
   runAgent,
+  extractContact,
   type AgentContext,
   type AgentMessage,
   type ToolInvocation,
@@ -8,12 +9,15 @@ import {
   type ToolOutcome,
 } from "@lidh/core";
 import { PrismaService } from "../../common/prisma/prisma.service";
+import { CryptoService } from "../../common/crypto/crypto.service";
+import { LiveService } from "../../common/live/live.service";
 import { RetrievalService } from "../../chat/retrieval.service";
 import {
   WHATSAPP_TRANSPORT,
   type InboundWhatsAppMessage,
   type WhatsAppTransport,
 } from "./transport";
+import type { AccountEvent, EchoMessage } from "./meta-webhook.parser";
 
 const ALL_TOOLS: ToolName[] = ["capture_lead", "request_human_handoff"];
 
@@ -34,6 +38,8 @@ export class WhatsappService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly retrieval: RetrievalService,
+    private readonly crypto: CryptoService,
+    private readonly live: LiveService,
     @Inject(WHATSAPP_TRANSPORT)
     private readonly transport: WhatsAppTransport,
   ) {}
@@ -42,23 +48,19 @@ export class WhatsappService {
   async handleInbound(msg: InboundWhatsAppMessage): Promise<void> {
     const db = this.prisma.client;
 
+    // Idempotency: Meta retries webhook deliveries within seconds. If we've
+    // already stored this provider message id, skip (don't double-reply).
+    if (
+      msg.providerMessageId &&
+      (await this.isDuplicate(msg.providerMessageId))
+    ) {
+      this.logger.debug(`duplicate inbound ${msg.providerMessageId} — skipped`);
+      return;
+    }
+
     // Resolve tenant via the WhatsApp channel whose config.phoneNumberId (or
     // displayPhoneNumber) matches the business number that received the msg.
-    const channel = await db.channel.findFirst({
-      where: {
-        kind: "whatsapp",
-        status: "connected",
-        OR: [
-          { config: { path: ["phoneNumberId"], equals: msg.businessNumber } },
-          {
-            config: {
-              path: ["displayPhoneNumber"],
-              equals: msg.businessNumber,
-            },
-          },
-        ],
-      },
-    });
+    const channel = await this.findConnectedChannel(msg.businessNumber);
     if (!channel) {
       this.logger.warn(
         `inbound for unknown WhatsApp number "${msg.businessNumber}" — ignored`,
@@ -125,6 +127,20 @@ export class WhatsappService {
           channelRef: msg.from,
         },
       });
+      // Live: light up the dashboard inbox (parity with web chat).
+      this.live.publish(tenant.id, {
+        type: "conversation.started",
+        conversationId: conversation.id,
+        channelKind: "whatsapp",
+        contactName: contact.name,
+      });
+      await db.event.create({
+        data: {
+          tenantId: tenant.id,
+          conversationId: conversation.id,
+          kind: "conversation_started",
+        },
+      });
     }
 
     // Persist inbound BEFORE running the agent (ADR-001 #5).
@@ -134,7 +150,14 @@ export class WhatsappService {
         tenantId: tenant.id,
         role: "user",
         contentText: msg.text,
+        providerMessageId: msg.providerMessageId ?? null,
       },
+    });
+    this.live.publish(tenant.id, {
+      type: "message",
+      conversationId: conversation.id,
+      role: "user",
+      preview: msg.text.slice(0, 120),
     });
 
     // 24h customer-service window: we are REPLYING to a just-received inbound,
@@ -168,6 +191,23 @@ export class WhatsappService {
         role: m.role === "assistant" ? "assistant" : "user",
         content: m.contentText as string,
       }));
+
+    // Human takeover: the AI is paused for this thread. The inbound is already
+    // persisted (and pushed live); an operator replies from the dashboard
+    // (delivered back to WhatsApp in Phase 5). Do NOT run the agent — but still
+    // silently capture contact details the customer volunteers. (Parity with
+    // the web path, chat.service.ts.)
+    if (conversation.aiPaused) {
+      void this.captureDuringTakeover(
+        tenant.id,
+        conversation.id,
+        contact.id,
+        history,
+        msg.text,
+        agent.modelOverride ?? undefined,
+      );
+      return;
+    }
 
     const knowledgeChunks = await this.retrieval.retrieve(
       tenant.id,
@@ -228,18 +268,289 @@ export class WhatsappService {
         tokensOut,
       },
     });
+    this.live.publish(tenant.id, {
+      type: "message",
+      conversationId: conversation.id,
+      role: "assistant",
+      preview: reply.slice(0, 120),
+    });
     await db.conversation.update({
       where: { id: conversation.id },
       data: { lastMsgAt: new Date() },
     });
 
-    // Per-tenant outbound context: the WhatChimp/Meta phone_number_id lives
-    // on the resolved Channel's config (set per tenant when the channel is
-    // wired). Stub transport ignores ctx; real providers require it.
+    // Per-tenant outbound context: the Meta phone_number_id lives on the
+    // resolved Channel's config; the access token is the encrypted
+    // credentialsEnc blob, decrypted here (the transport stays crypto-free).
+    // Stub transport ignores ctx; MetaCloudTransport requires both.
     const cfg = (channel.config ?? {}) as { phoneNumberId?: unknown };
     const phoneNumberId =
       typeof cfg.phoneNumberId === "string" ? cfg.phoneNumberId : undefined;
-    await this.transport.sendText(msg.from, reply, { phoneNumberId });
+    const accessToken = this.decryptToken(channel.credentialsEnc);
+    await this.transport.sendText(msg.from, reply, {
+      phoneNumberId,
+      accessToken,
+    });
+  }
+
+  /**
+   * Register contact details a customer sends WHILE A HUMAN HAS TAKEN OVER.
+   * The agentic loop (capture_lead) is paused during takeover, so we run a
+   * cheap gated extraction instead — silently: no reply, no banner. Ported
+   * from ChatService.captureDuringTakeover (WhatsApp variant persists the
+   * Lead/Event but doesn't email, matching this service's capture_lead tool).
+   */
+  private async captureDuringTakeover(
+    tenantId: string,
+    conversationId: string,
+    contactId: string,
+    messages: AgentMessage[],
+    latestMessage: string,
+    model: string | undefined,
+  ): Promise<void> {
+    try {
+      // Cost gate: only spend an extraction call when the latest message
+      // actually carries a contact signal — an email or a 6+ digit run.
+      const hasSignal =
+        /\S+@\S+\.\S+/.test(latestMessage) ||
+        /\d[\d\s().+-]{5,}\d/.test(latestMessage);
+      if (!hasSignal) return;
+
+      const found = await extractContact({
+        anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+        messages,
+        model,
+      });
+      if (!found.phone && !found.email) return;
+
+      const db = this.prisma.client;
+      const contact = await db.contact.findUnique({
+        where: { id: contactId },
+        select: { phone: true, email: true },
+      });
+      const digits = (s?: string | null) => s?.replace(/\D/g, "") || undefined;
+      const lower = (s?: string | null) => s?.trim().toLowerCase() || undefined;
+      const addsPhone =
+        !!found.phone && digits(found.phone) !== digits(contact?.phone);
+      const addsEmail =
+        !!found.email && lower(found.email) !== lower(contact?.email);
+      if (!addsPhone && !addsEmail) return;
+
+      if (found.name || found.email) {
+        await db.contact.update({
+          where: { id: contactId },
+          data: {
+            name: found.name ?? undefined,
+            email: found.email ?? undefined,
+            lastSeenAt: new Date(),
+          },
+        });
+      }
+      await db.lead.create({
+        data: {
+          tenantId,
+          conversationId,
+          contactId,
+          status: "new_",
+          payload: {
+            name: found.name,
+            email: found.email,
+            phone: found.phone,
+            notes: "Captured automatically during human take-over",
+          },
+        },
+      });
+      await db.event.create({
+        data: { tenantId, conversationId, kind: "lead_captured" },
+      });
+      this.logger.log(`take-over capture: lead saved for ${conversationId}`);
+    } catch (e) {
+      this.logger.error(
+        `take-over capture failed: ${e instanceof Error ? e.message : "unknown"}`,
+      );
+    }
+  }
+
+  /** Decrypt a channel's stored Meta access token; null/invalid → undefined. */
+  private decryptToken(credentialsEnc: string | null): string | undefined {
+    if (!credentialsEnc) return undefined;
+    try {
+      return this.crypto.decrypt(credentialsEnc);
+    } catch (err) {
+      this.logger.error(
+        `failed to decrypt channel credentials: ${
+          err instanceof Error ? err.message : "unknown"
+        }`,
+      );
+      return undefined;
+    }
+  }
+
+  /** True if a message with this provider id was already recorded (dedupe). */
+  private async isDuplicate(providerMessageId: string): Promise<boolean> {
+    const existing = await this.prisma.client.message.findUnique({
+      where: { providerMessageId },
+      select: { id: true },
+    });
+    return existing !== null;
+  }
+
+  /** The connected whatsapp Channel whose config matches a business number. */
+  private findConnectedChannel(businessNumber: string) {
+    return this.prisma.client.channel.findFirst({
+      where: {
+        kind: "whatsapp",
+        status: "connected",
+        OR: [
+          { config: { path: ["phoneNumberId"], equals: businessNumber } },
+          { config: { path: ["displayPhoneNumber"], equals: businessNumber } },
+        ],
+      },
+    });
+  }
+
+  /**
+   * Handle a coexistence echo — a message the business OWNER sent to a
+   * customer from their own WhatsApp Business App. Recorded so the dashboard
+   * inbox stays in sync, but we do NOT run the agent or reply (that would
+   * double-message the customer and could loop).
+   */
+  async handleEcho(echo: EchoMessage): Promise<void> {
+    const db = this.prisma.client;
+    if (
+      echo.providerMessageId &&
+      (await this.isDuplicate(echo.providerMessageId))
+    ) {
+      return;
+    }
+    const channel = await this.findConnectedChannel(echo.businessNumber);
+    if (!channel) {
+      this.logger.warn(
+        `echo for unknown WhatsApp number "${echo.businessNumber}" — ignored`,
+      );
+      return;
+    }
+    const tenant = await db.tenant.findUnique({
+      where: { id: channel.tenantId },
+    });
+    if (!tenant || tenant.status === "archived") return;
+
+    const contact = await db.contact.upsert({
+      where: { tenantId_phone: { tenantId: tenant.id, phone: echo.customer } },
+      update: { lastSeenAt: new Date() },
+      create: {
+        tenantId: tenant.id,
+        phone: echo.customer,
+        source: "whatsapp",
+      },
+    });
+
+    let conversation = await db.conversation.findFirst({
+      where: {
+        tenantId: tenant.id,
+        channelId: channel.id,
+        contactId: contact.id,
+        status: "open",
+      },
+      orderBy: { lastMsgAt: "desc" },
+    });
+    if (!conversation) {
+      conversation = await db.conversation.create({
+        data: {
+          tenantId: tenant.id,
+          channelId: channel.id,
+          contactId: contact.id,
+          kind: "customer",
+          status: "open",
+          locale: tenant.defaultLocale,
+          channelRef: echo.customer,
+        },
+      });
+    }
+
+    // Tag as an operator (human) message — same shape as web operator replies
+    // — so the dashboard shows it as sent-by-business, not by the AI.
+    await db.message.create({
+      data: {
+        conversationId: conversation.id,
+        tenantId: tenant.id,
+        role: "assistant",
+        contentText: echo.text,
+        contentJson: { human: true, by: "owner_device" },
+        providerMessageId: echo.providerMessageId ?? null,
+      },
+    });
+    await db.conversation.update({
+      where: { id: conversation.id },
+      data: { lastMsgAt: new Date() },
+    });
+    this.live.publish(tenant.id, {
+      type: "message",
+      conversationId: conversation.id,
+      role: "assistant",
+      preview: echo.text.slice(0, 120),
+    });
+  }
+
+  /**
+   * Handle a WABA lifecycle event (coexistence offboard / reconnect). Flips
+   * the channel status so inbound is (not) served and the dashboard reflects
+   * it. Matched by config.wabaId.
+   */
+  async handleAccountEvent(evt: AccountEvent): Promise<void> {
+    const db = this.prisma.client;
+    const channel = await db.channel.findFirst({
+      where: {
+        kind: "whatsapp",
+        config: { path: ["wabaId"], equals: evt.wabaId },
+      },
+    });
+    if (!channel) {
+      this.logger.warn(
+        `account event for unknown WABA "${evt.wabaId}" — ignored`,
+      );
+      return;
+    }
+    const e = evt.event.toLowerCase();
+    if (
+      e.includes("offboard") ||
+      e.includes("disable") ||
+      e.includes("delete")
+    ) {
+      await db.channel.update({
+        where: { id: channel.id },
+        data: { status: "disconnected" },
+      });
+      await db.event.create({
+        data: {
+          tenantId: channel.tenantId,
+          kind: "channel_disconnected",
+          meta: { wabaId: evt.wabaId, event: evt.event },
+        },
+      });
+      this.logger.log(
+        `WABA ${evt.wabaId} offboarded → channel ${channel.id} disconnected`,
+      );
+    } else if (e.includes("reconnect") || e.includes("restore")) {
+      await db.channel.update({
+        where: { id: channel.id },
+        data: { status: "connected" },
+      });
+      await db.event.create({
+        data: {
+          tenantId: channel.tenantId,
+          kind: "channel_connected",
+          meta: { wabaId: evt.wabaId, event: evt.event },
+        },
+      });
+      this.logger.log(
+        `WABA ${evt.wabaId} reconnected → channel ${channel.id} connected`,
+      );
+    } else {
+      this.logger.debug(
+        `WABA ${evt.wabaId} event "${evt.event}" — no status change`,
+      );
+    }
   }
 
   private makeToolExecutor(

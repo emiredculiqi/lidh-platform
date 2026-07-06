@@ -52,7 +52,9 @@ You'll paste these as Fly secrets / Vercel env vars during the phases below. Cop
 | `OPENAI_API_KEY` | Your existing OpenAI key (for RAG embeddings) |
 | `CLERK_SECRET_KEY` + `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk dashboard → API Keys. **For first deploy:** use your existing `sk_test_…` / `pk_test_…` keys. Clerk will show a "development mode" banner but everything works. Swap to production keys later (Phase 4). |
 | `PLATFORM_ADMIN_EMAILS` | Your email (and any teammates' emails who should be platform admins) |
-| `WHATCHIMP_API_TOKEN` | Optional — set this when you connect WhatsApp; can be empty for first deploy |
+| `CREDENTIAL_ENC_KEY` | 32-byte base64 key for encrypting per-tenant WhatsApp tokens. Generate with `openssl rand -base64 32`. Required before any tenant connects WhatsApp. |
+| `META_APP_ID` / `META_APP_SECRET` / `META_CONFIG_ID` | Optional — set when you go live as a Meta Tech Provider (Phase 5). Empty = WhatsApp uses the Stub transport. |
+| `META_WEBHOOK_VERIFY_TOKEN` | Optional — the verify token you enter in the Meta App webhook settings (any random string). |
 
 > **Cost expectation:** ~$5/month for the Fly machine (1 GB always-on). Vercel Hobby is free; Pro ($20/mo) is required once you're commercial.
 
@@ -95,7 +97,7 @@ fly secrets set \
 
 Notes:
 - `CORS_ORIGINS` is set in `fly.toml` already (`https://app.lidh.al,https://widget.lidh.al,https://demo.lidh.al`).
-- WhatChimp secrets (`WHATCHIMP_API_TOKEN`, `WHATCHIMP_WEBHOOK_SECRET`) only matter when you connect WhatsApp — leave unset for now (the factory falls back to the Stub transport, which is fine).
+- Meta secrets (`META_APP_ID`, `META_APP_SECRET`, `META_CONFIG_ID`, `META_WEBHOOK_VERIFY_TOKEN`) only matter when you go live as a WhatsApp Tech Provider — leave unset for now (the factory falls back to the Stub transport, which is fine). Do set `CREDENTIAL_ENC_KEY` before any tenant connects WhatsApp.
 - `ENABLE_SWAGGER='true'` exposes `/docs` in prod so you can probe endpoints. Unset later if you want to hide it.
 
 ### 1.3 — Deploy
@@ -270,20 +272,43 @@ When you're ready:
 
 ---
 
-## Phase 5 — (Optional) Connect WhatsApp via WhatChimp
+## Phase 5 — (Optional) Go live as a Meta WhatsApp Tech Provider (Coexistence)
 
-Only do this after the rest is live. The webhook URL becomes `https://api.lidh.al/v1/webhooks/whatsapp/whatchimp?token=<secret>`.
+Only do this after the rest is live. We connect businesses' WhatsApp numbers
+directly via Meta's Cloud API (no BSP). See `docs/whatsapp.md` for the full
+architecture; this is the deploy checklist.
 
-1. Set Fly secrets:
-   ```bash
-   fly secrets set \
-     WHATCHIMP_API_TOKEN='<your-token>' \
-     WHATCHIMP_WEBHOOK_SECRET='<random-string>' \
-     --config services/api/fly.toml
-   ```
-2. In WhatChimp dashboard → WhatsApp Webhook → set URL to `https://api.lidh.al/v1/webhooks/whatsapp/whatchimp?token=<your-WHATCHIMP_WEBHOOK_SECRET>`.
-3. In your tenant's WhatsApp `Channel.config`, set `phoneNumberId` (Meta's, visible in WhatChimp).
-4. Send a WhatsApp message to your business number — the agent replies via WhatChimp's `/send`.
+**One-time Meta setup (the long pole — start early):**
+1. Complete **Business Verification** for the Lidh.al Meta Business.
+2. Create a **Meta App** (type: Business) → add the **WhatsApp** product → note the **App ID** + **App Secret**.
+3. Create a **Facebook Login for Business** config for Embedded Signup (coexistence) → note the **`config_id`**.
+4. Submit **App Review** for Advanced Access to `whatsapp_business_messaging` + `whatsapp_business_management`.
+5. In the App's **WhatsApp → Configuration → Webhook**, set the callback URL to
+   `https://api.lidh.al/v1/webhooks/whatsapp` and the verify token to your
+   `META_WEBHOOK_VERIFY_TOKEN`; subscribe the fields `messages`, `message_echoes`, `account_update`.
+
+**Fly secrets:**
+```bash
+fly secrets set \
+  CREDENTIAL_ENC_KEY="$(openssl rand -base64 32)" \
+  META_APP_ID='<app-id>' \
+  META_APP_SECRET='<app-secret>' \
+  META_CONFIG_ID='<embedded-signup-config-id>' \
+  META_WEBHOOK_VERIFY_TOKEN='<random-string>' \
+  META_GRAPH_VERSION='v22.0' \
+  --config services/api/fly.toml
+```
+
+**Vercel (dashboard) env** (Embedded Signup runs in the browser):
+`NEXT_PUBLIC_META_APP_ID`, `NEXT_PUBLIC_META_CONFIG_ID`, `NEXT_PUBLIC_META_GRAPH_VERSION`.
+
+**Per-business connect (self-serve):** the business owner opens their dashboard →
+**Developer** → **Connect WhatsApp**, completes the Meta popup and scans the QR
+from their WhatsApp Business App. The backend exchanges the code for a token,
+subscribes our app to their WABA, and flips the channel to `connected`. From
+then on their WhatsApp customers are answered by the same agent as web chat.
+Billing note: each business adds their own payment method and pays Meta directly
+for message costs (Tech Provider model).
 
 ---
 

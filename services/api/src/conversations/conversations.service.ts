@@ -6,6 +6,7 @@ import {
 import { PrismaService } from "../common/prisma/prisma.service";
 import { TenantContextService } from "../common/tenant-context/tenant-context.service";
 import { LiveService } from "../common/live/live.service";
+import { WhatsAppOutboundService } from "../channels/whatsapp/whatsapp-outbound.service";
 import { assertCanAccessTenant } from "../common/auth/access";
 import type {
   ConversationListItemDto,
@@ -21,6 +22,7 @@ export class ConversationsService {
     private readonly prisma: PrismaService,
     private readonly ctx: TenantContextService,
     private readonly live: LiveService,
+    private readonly whatsAppOutbound: WhatsAppOutboundService,
   ) {}
 
   /** Take over a conversation (pause the AI) or hand it back (resume). */
@@ -94,6 +96,10 @@ export class ConversationsService {
       conversationId: id,
       text: trimmed,
     });
+    // Deliver over WhatsApp when this is a WhatsApp thread (no-op otherwise).
+    // Direct call — LiveService is single-instance, so a subscriber wouldn't
+    // fire reliably across machines.
+    await this.whatsAppOutbound.sendForConversation(id, trimmed);
     return { ok: true };
   }
 

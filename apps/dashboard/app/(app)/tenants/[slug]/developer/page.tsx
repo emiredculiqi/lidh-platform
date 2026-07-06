@@ -1,18 +1,21 @@
 import { T } from "@/components/T";
 import { CopyBlock } from "@/components/CopyBlock";
 import { Card } from "@/components/ui/Card";
+import { ConnectWhatsApp } from "@/components/ConnectWhatsApp";
+import { api, type ChannelStatus } from "@/lib/api-server";
 
 export const dynamic = "force-dynamic";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.lidh.al";
 
-const CHANNELS: {
+// WhatsApp is interactive (connect flow) so it's rendered separately; these
+// are the static status pills.
+const OTHER_CHANNELS: {
   name: string;
   dot: string;
   status: "connected" | "soon";
 }[] = [
   { name: "Web Widget", dot: "bg-brand-blue", status: "connected" },
-  { name: "WhatsApp Business", dot: "bg-emerald-500", status: "soon" },
   { name: "Instagram DM", dot: "bg-pink-500", status: "soon" },
   { name: "Facebook Messenger", dot: "bg-cyan-500", status: "soon" },
 ];
@@ -23,6 +26,15 @@ export default async function DeveloperPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+
+  // Current WhatsApp channel status (drives the Connect/Disconnect UI).
+  let whatsapp: ChannelStatus | null = null;
+  try {
+    const channels = await api.getChannels(slug);
+    whatsapp = channels.find((c) => c.kind === "whatsapp") ?? null;
+  } catch {
+    whatsapp = null; // API unreachable → treat as not connected
+  }
 
   const basic = `<script
   src="${APP_URL}/widget.js"
@@ -47,7 +59,11 @@ export default async function DeveloperPage({
           <T al="Kanalet" en="Channels" />
         </h3>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {CHANNELS.map((c) => (
+          {/* WhatsApp — interactive connect flow (spans the row). */}
+          <div className="rounded-xl border border-slate-200 px-4 py-3 sm:col-span-2">
+            <ConnectWhatsApp slug={slug} initial={whatsapp} />
+          </div>
+          {OTHER_CHANNELS.map((c) => (
             <div
               key={c.name}
               className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3"

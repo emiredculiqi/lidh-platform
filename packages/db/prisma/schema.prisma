@@ -517,6 +517,10 @@ model Message {
   role           MessageRole
   contentText    String?     @db.Text
   contentJson    Json? // rich content (attachments, structured replies)
+  // Provider message id (WhatsApp wamid) for inbound/echo idempotency — Meta
+  // retries webhook deliveries, so we dedupe on this. Null for web/assistant
+  // turns; @unique is safe (Postgres treats multiple NULLs as distinct).
+  providerMessageId String? @unique
   // Tool-call fields (only populated when role = "tool" or assistant emitted a tool call):
   toolName       String?
   toolInput      Json?

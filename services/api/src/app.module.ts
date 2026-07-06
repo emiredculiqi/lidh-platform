@@ -5,6 +5,7 @@ import { EmbeddingModule } from "./common/embedding/embedding.module";
 import { StorageModule } from "./common/storage/storage.module";
 import { MailModule } from "./common/mail/mail.module";
 import { LiveModule } from "./common/live/live.module";
+import { CryptoModule } from "./common/crypto/crypto.module";
 import { AuthModule } from "./common/auth/auth.module";
 import { TenantContextModule } from "./common/tenant-context/tenant-context.module";
 import { HealthModule } from "./health/health.module";
@@ -15,6 +16,7 @@ import { ConversationsModule } from "./conversations/conversations.module";
 import { LeadsModule } from "./leads/leads.module";
 import { AgentsModule } from "./agents/agents.module";
 import { WhatsappModule } from "./channels/whatsapp/whatsapp.module";
+import { ChannelsModule } from "./channels/channels.module";
 import { PersonaPresetsModule } from "./persona-presets/persona-presets.module";
 import { OnboardingModule } from "./onboarding/onboarding.module";
 import { UsageModule } from "./usage/usage.module";
@@ -35,6 +37,7 @@ import { MembersModule } from "./members/members.module";
     StorageModule,
     MailModule,
     LiveModule,
+    CryptoModule,
     AuthModule,
     TenantContextModule,
     HealthModule,
@@ -45,6 +48,7 @@ import { MembersModule } from "./members/members.module";
     LeadsModule,
     AgentsModule,
     WhatsappModule,
+    ChannelsModule,
     PersonaPresetsModule,
     OnboardingModule,
     UsageModule,

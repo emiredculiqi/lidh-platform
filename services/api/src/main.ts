@@ -28,7 +28,14 @@ async function bootstrap() {
       // ample for SMB brochures / price lists.
       bodyLimit: 20 * 1024 * 1024,
     }),
-    { logger: logLevels },
+    {
+      logger: logLevels,
+      // Retain the raw request buffer so webhook handlers can verify
+      // provider signatures over the exact bytes received. Meta's WhatsApp
+      // webhook sends X-Hub-Signature-256 = HMAC-SHA256(app_secret, rawBody);
+      // re-serializing the parsed JSON would change the bytes and break it.
+      rawBody: true,
+    },
   );
 
   // Version every route under /v1. Lets us ship /v2 later without breaking
