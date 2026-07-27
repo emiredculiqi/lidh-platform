@@ -4,6 +4,7 @@ import { CryptoService } from "../../common/crypto/crypto.service";
 import { LiveService } from "../../common/live/live.service";
 import { WHATSAPP_TRANSPORT, type WhatsAppTransport } from "./transport";
 import { MetaSendError } from "./meta-cloud-transport";
+import { loadTenantEntitlements } from "../../tenants/entitlements";
 
 /**
  * Deliver an operator's dashboard reply to the customer over WhatsApp.
@@ -44,6 +45,33 @@ export class WhatsAppOutboundService {
       this.logger.warn(
         `WA reply skipped: channel ${conv.channel.id} not connected`,
       );
+      return;
+    }
+
+    // Entitlement gate (ADR-017): a Basic plan (WhatsApp is Premium-only) or a
+    // frozen tenant must not send on WhatsApp, even an operator's reply. The
+    // dashboard read-only guard covers expired tenants, but a subscribed-Basic
+    // tenant has a FULL dashboard yet no WhatsApp — so it must be gated here.
+    const tenant = await this.prisma.client.tenant.findUnique({
+      where: { id: conv.tenantId },
+      select: {
+        status: true,
+        trialEndsAt: true,
+        planId: true,
+        planOverrides: true,
+      },
+    });
+    if (!tenant) return;
+    const ent = await loadTenantEntitlements(this.prisma.client, tenant);
+    if (!ent.whatsappEnabled) {
+      this.logger.warn(
+        `WA reply skipped for tenant ${conv.tenantId}: whatsapp disabled (state=${ent.state})`,
+      );
+      this.live.publish(conv.tenantId, {
+        type: "delivery_failed",
+        conversationId,
+        text: "WhatsApp isn't active on your current plan. Upgrade to Premium to reply on WhatsApp.",
+      });
       return;
     }
 

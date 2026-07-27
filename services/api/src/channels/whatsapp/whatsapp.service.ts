@@ -18,6 +18,7 @@ import {
   type WhatsAppTransport,
 } from "./transport";
 import type { AccountEvent, EchoMessage } from "./meta-webhook.parser";
+import { loadTenantEntitlements } from "../../tenants/entitlements";
 
 const ALL_TOOLS: ToolName[] = ["capture_lead", "request_human_handoff"];
 
@@ -159,6 +160,18 @@ export class WhatsappService {
       role: "user",
       preview: msg.text.slice(0, 120),
     });
+
+    // Entitlement gate (ADR-017): the inbound is now CAPTURED (stored + shown
+    // in the inbox for review) — but a frozen/expired tenant, or a Basic plan
+    // (WhatsApp is Premium-only), gets NO auto-reply. Freeze on the wire, not
+    // the data. (Archived was already dropped earlier, before persistence.)
+    const ent = await loadTenantEntitlements(db, tenant);
+    if (!ent.whatsappEnabled) {
+      this.logger.log(
+        `inbound WhatsApp for ${tenant.slug} captured but not answered (state=${ent.state})`,
+      );
+      return;
+    }
 
     // 24h customer-service window: we are REPLYING to a just-received inbound,
     // so we are always inside the free-form window here. (Window enforcement

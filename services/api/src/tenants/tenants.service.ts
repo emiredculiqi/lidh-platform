@@ -16,6 +16,7 @@ import type {
   FunnelResolveResponseDto,
   TenantResponseDto,
 } from "./dto/tenant-response.dto";
+import { loadTenantEntitlements } from "./entitlements";
 
 // Read at call-time, NOT module top-level: @nestjs/config loads .env during
 // bootstrap, after this module is imported. A top-level const captures undef.
@@ -299,7 +300,9 @@ export class TenantsService {
       name: t.name,
       defaultLocale: t.defaultLocale,
       locales: personas.map((p) => p.locale),
-      isActive: isTenantActive(t),
+      // chatEnabled honors the grace window (isTenantActive did not — it flipped
+      // to false the instant the trial ended). ADR-017.
+      isActive: (await loadTenantEntitlements(db, t)).chatEnabled,
     };
   }
 

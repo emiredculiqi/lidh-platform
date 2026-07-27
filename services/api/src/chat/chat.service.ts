@@ -17,6 +17,7 @@ import {
   type PropertyFilters,
 } from "./property-search.service";
 import type { ChatWebRequestDto } from "./dto/chat-web-request.dto";
+import { loadTenantEntitlements } from "../tenants/entitlements";
 
 /** Client-facing stream events (controller maps these to SSE). `usage` is
  *  handled internally for token billing and never reaches the client. */
@@ -64,9 +65,13 @@ export class ChatService {
       yield { kind: "error", message: "tenant_not_found" };
       return;
     }
-    // Archived = subscription paused (ADR-008): the agent serves no one on
-    // any channel. Web widget + demo link both flow through here.
-    if (tenant.status === "archived") {
+    // Entitlement gate (ADR-017): the web widget + funnel serve only when the
+    // tenant is live — trialing, in grace, or on any paid plan. Archived, or an
+    // expired trial past its grace window, gets the "offline" signal and no
+    // agent run (parity with getFunnel's isActive). Replaces the old
+    // archived-only check, which let lapsed trials keep replying for free.
+    const ent = await loadTenantEntitlements(db, tenant);
+    if (!ent.chatEnabled) {
       yield { kind: "error", message: "tenant_inactive" };
       return;
     }
