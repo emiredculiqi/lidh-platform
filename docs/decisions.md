@@ -715,3 +715,86 @@ for M2.4").
   unchanged; WhatChimp provisioning is wired but unbound.
 
 ---
+
+## ADR-017 — Trial enforcement & the entitlements resolver (freeze, don't lock out)
+
+The free tier is a **reverse trial**: every tenant is born with a 30-day trial
+(`Tenant.trialEndsAt`, `TRIAL_DAYS=30`) that grants **full Premium**, WhatsApp
+included. When it lapses the tenant must **choose a plan** — **Basic** (€29,
+web widget only, *no* WhatsApp) or **Premium** (€69, keeps WhatsApp). WhatsApp
+is deliberately the Premium hook; putting it on Basic would gut Premium. In
+Albania WhatsApp *is* the product, so giving the whole Premium experience free
+and then gating it is the strongest conversion lever — and it exposes Lidh to
+no message cost (direct Meta Tech Provider; **service** conversations are free,
+see [[ADR-004]] / `docs/whatsapp.md`).
+
+**The problem this fixes:** "free for a month" was silently "free forever." The
+runtime gated only on `status === "archived"`; an expired-but-not-archived trial
+kept getting served on the web widget and WhatsApp. And the one helper that knew
+about trials, `isTenantActive()`, was wired into `getFunnel`/`toTenantResponse`
+only — never the chat or WhatsApp runtimes.
+
+### Decision 1 — Derive entitlements; never materialize them
+
+Enforcement is a **pure, synchronous** computation from `status` + `trialEndsAt`
++ `planId` + the clock. There is NO "expired" status column and NO cron that
+flips tenants off. The instant grace passes, the next request sees the freeze.
+
+- Correct by construction — no "expired but the nightly job hasn't run" window.
+- Enforcement never depends on the scheduler. The cron exists only to *remind*
+  (Phase 5); it can fail without ever letting a lapsed trial serve for free.
+
+### Decision 2 — One resolver returns the full picture, not a boolean
+
+`resolveEntitlements(input, opts)` in `services/api/src/tenants/entitlements.ts`
+returns `{ state, chatEnabled, whatsappEnabled, dashboard, graceEndsAt }`.
+Each enforcement point reads the column it cares about. Precedence
+archived → subscribed → trial. States and capabilities:
+
+| state | condition | web/funnel | whatsapp | dashboard |
+|---|---|---|---|---|
+| `trialing` | `trialEndsAt > now` | on | on | full |
+| `grace` | lapsed, `< trialEndsAt + 3d`, no plan | on | on | full (warned) |
+| `expired` | `≥ trialEndsAt + 3d`, no plan | **off** | **off** | **read_only** |
+| `subscribed` | `planId` set | on | plan flag (Basic off / Premium on) | full |
+| `archived` | `status="archived"` | off | off | none |
+
+### Decision 3 — Freeze, don't lock out
+
+An `expired` tenant keeps **read-only** dashboard access — they still see the
+leads, contacts, conversations and usage they collected; every *mutation* is
+rejected (`subscription_required`). Only `archived` (the admin kill switch,
+[[ADR-008]]) is a hard lock-out. WhatsApp inbound is still **persisted** before
+the reply gate, so a frozen tenant's incoming messages remain reviewable.
+
+### Decision 4 — Soft grace = 3 days
+
+After `trialEndsAt` the tenant stays fully live for `GRACE_DAYS = 3` (Premium,
+full dashboard) while reminders escalate, so a live customer chat never dies
+mid-sentence. Then it freezes. Tunable via the resolver's `graceDays` option.
+
+### Decision 5 — Manual activation stays; no payment gate in code
+
+The resolver reads `planId`/`trialEndsAt`/`status`, never a payment record.
+Admins reactivate anyone — paid or not — via the existing `grantPlan` /
+`extendTrial` / `planOverrides`. Reactivation is instant (derived) and
+non-destructive (the WhatsApp channel is suspended, not deleted). A `planId` is
+a **permanent** grant until an admin revokes it — real billing cycles /
+`planExpiresAt` are M3.
+
+- **Why derived over a job:** a materialized status conflates "admin archived"
+  with "trial auto-lapsed", goes stale between runs, and couples access control
+  to a background worker. A pure function is trivially testable — the first
+  test suite in the monorepo (Vitest, `entitlements.spec.ts`, 17 cases) proves
+  every row + the grace boundaries.
+- **Why read-only, not lock-out:** an expired trial is someone we want to win
+  back, not evict. Letting them review what the trial captured *is* the sales
+  pitch; locking them out destroys it.
+
+- **Honest scope:** ADR covers the model + the pure resolver (Phase 1, built).
+  Still to wire (Phases 2–6): the runtime gates in `chat.service.ts` +
+  `whatsapp.service.ts` (in/out) + `getFunnel`; the dashboard read-only
+  write-guard + DTO fields; the admin override buttons; and the
+  `@nestjs/schedule` reminder job (T-7/T-3/T-1/T-0) with a "reminder-sent"
+  marker. Owner-phone capture (for later WhatsApp reminders), hard conversation
+  caps, self-serve checkout and BSP/consolidated billing are explicitly M3+.
