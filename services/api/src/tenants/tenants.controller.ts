@@ -90,7 +90,7 @@ export class TenantsController {
     description:
       "Creates the full tenant in one transaction: tenant + agent + one " +
       "persona per language + a web channel. Every tenant starts with a " +
-      "15-day trial (`trialEndsAt = now + 15d`) and gets a permanent " +
+      "30-day trial (`trialEndsAt = now + 30d`) and gets a permanent " +
       "funnel page at `funnelUrl`. To promote the tenant to paid, hit " +
       "`/grant-plan` later.",
   })

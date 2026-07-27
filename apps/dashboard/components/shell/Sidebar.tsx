@@ -113,7 +113,7 @@ export function Sidebar({
             <div className="h-1.5 overflow-hidden rounded bg-slate-200">
               <div
                 className="h-full rounded bg-gradient-to-r from-brand-sky to-brand-blue"
-                style={{ width: `${Math.min(100, (trialDays / 15) * 100)}%` }}
+                style={{ width: `${Math.min(100, (trialDays / 30) * 100)}%` }}
               />
             </div>
           </div>

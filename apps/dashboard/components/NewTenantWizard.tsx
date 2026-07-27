@@ -114,7 +114,7 @@ export function NewTenantWizard({ presets }: { presets: PersonaPreset[] }) {
       widget: "Widget",
       funnelExplainer1: "The funnel page at ",
       funnelExplainer2:
-        " is created automatically. Every new tenant starts on a 15-day trial.",
+        " is created automatically. Every new tenant starts on a 30-day trial.",
       originsLabel:
         "Allowed widget origins (optional, comma-separated) — only needed if the SMB also embeds the chat on their own website.",
       knowledge: "Knowledge (optional)",
