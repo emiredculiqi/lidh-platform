@@ -92,6 +92,18 @@ export class WhatsappController {
         .handleAccountEvent(evt)
         .catch((err) => this.logCrash("handleAccountEvent", err));
     }
+    // Coexistence backfill. These arrive in bursts after a connect (3 phases ×
+    // N chunks) and never trigger the agent — they are past conversations.
+    for (const chunk of parsed.historyChunks) {
+      void this.whatsapp
+        .handleHistoryChunk(chunk)
+        .catch((err) => this.logCrash("handleHistoryChunk", err));
+    }
+    for (const entry of parsed.contactSync) {
+      void this.whatsapp
+        .handleContactSync(entry)
+        .catch((err) => this.logCrash("handleContactSync", err));
+    }
     if (parsed.statusCount > 0) {
       this.logger.debug(`ignored ${parsed.statusCount} status update(s)`);
     }

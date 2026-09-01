@@ -109,6 +109,36 @@ export class MetaOnboardingService {
     this.logger.log(`registered phone number ${phoneNumberId}`);
   }
 
+  /**
+   * Ask Meta to replay the business's WhatsApp Business App data into our
+   * webhook. Coexistence history is **pull, not push** — nothing arrives until
+   * this call is made, and there is a hard 24-hour window after onboarding
+   * before the customer must be offboarded and re-onboarded.
+   *
+   *   POST /{phone-number-id}/smb_app_data  { messaging_product, sync_type }
+   *
+   * `sync_type`:
+   *   - "smb_app_state_sync" → contacts, delivered on the smb_app_state_sync field
+   *   - "history"            → 180 days of messages, on the history field,
+   *                            in 3 phases × N ordered chunks
+   *
+   * Requires the `history` and `smb_app_state_sync` webhook fields to be
+   * subscribed on the Meta app, otherwise the replay is delivered nowhere.
+   */
+  async requestSmbSync(
+    phoneNumberId: string,
+    accessToken: string,
+    syncType: "history" | "smb_app_state_sync",
+  ): Promise<void> {
+    await this.postJson(
+      this.base(`${phoneNumberId}/smb_app_data`),
+      accessToken,
+      { messaging_product: "whatsapp", sync_type: syncType },
+      `smb sync (${syncType})`,
+    );
+    this.logger.log(`requested ${syncType} for phone ${phoneNumberId}`);
+  }
+
   /** Fetch the display number + verified name for a phone_number_id. */
   async getPhoneNumber(
     phoneNumberId: string,

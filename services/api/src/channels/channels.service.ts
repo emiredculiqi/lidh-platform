@@ -149,6 +149,19 @@ export class ChannelsService {
         `(waba=${dto.wabaId}, coexistence=${coexistence})`,
     );
 
+    // Coexistence only: pull the business's existing contacts and 180 days of
+    // chat history into the inbox. This is a PULL — Meta sends nothing until
+    // asked — and there is a hard 24h window from onboarding, so it fires here
+    // rather than on a schedule. Best-effort: a failure must not fail an
+    // otherwise-good connect, and it can be retried from the dashboard.
+    if (coexistence) {
+      void this.requestHistoryBackfill(
+        tenant.id,
+        dto.phoneNumberId,
+        accessToken,
+      );
+    }
+
     return {
       kind: "whatsapp",
       status: "connected",
@@ -195,6 +208,55 @@ export class ChannelsService {
     this.logger.log(`WhatsApp disconnected for tenant ${tenantSlug}`);
 
     return { kind: "whatsapp", status: "disconnected" };
+  }
+
+  /**
+   * Kick off the coexistence backfill: contacts first (so history messages can
+   * attach to a named Contact), then messages.
+   *
+   * Deliberately fire-and-forget from connect() — the owner shouldn't wait on
+   * it, and neither sync failing should roll back a working connection. The
+   * outcome is recorded on the channel config so the dashboard can show status
+   * and offer a retry while the 24h window is still open.
+   */
+  private async requestHistoryBackfill(
+    tenantId: string,
+    phoneNumberId: string,
+    accessToken: string,
+  ): Promise<void> {
+    const db = this.prisma.client;
+    const started = new Date().toISOString();
+    const results: Record<string, string> = {};
+
+    for (const syncType of ["smb_app_state_sync", "history"] as const) {
+      try {
+        await this.meta.requestSmbSync(phoneNumberId, accessToken, syncType);
+        results[syncType] = "requested";
+      } catch (e) {
+        results[syncType] = `failed: ${
+          e instanceof Error ? e.message : "unknown"
+        }`;
+        this.logger.error(
+          `coexistence ${syncType} request failed for tenant ${tenantId}: ` +
+            results[syncType],
+        );
+      }
+    }
+
+    // Merge onto the existing config rather than replacing it.
+    const channel = await db.channel.findUnique({
+      where: { tenantId_kind: { tenantId, kind: "whatsapp" } },
+    });
+    if (!channel) return;
+    await db.channel.update({
+      where: { id: channel.id },
+      data: {
+        config: {
+          ...((channel.config ?? {}) as Record<string, unknown>),
+          historySync: { started, ...results },
+        },
+      },
+    });
   }
 
   /**

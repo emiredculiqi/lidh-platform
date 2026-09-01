@@ -64,6 +64,8 @@ export function ConnectWhatsApp({
       noSession:
         "Nuk morëm të dhënat e numrit nga Meta. Provoni sërish.",
       help: "Mbani WhatsApp Business App në telefon; asistenti përgjigjet në të njëjtin numër.",
+      deviceWarning:
+        "Kujdes: gjatë lidhjes, Meta shkëput të gjitha pajisjet tuaja të lidhura (WhatsApp Web, desktop). Do t'ju duhet t'i rilidhni pas procesit.",
     },
     en: {
       title: "WhatsApp Business",
@@ -78,6 +80,8 @@ export function ConnectWhatsApp({
       cancelled: "Connection cancelled.",
       noSession: "Didn't receive the number details from Meta. Try again.",
       help: "Keep the WhatsApp Business App on your phone; the assistant answers on the same number.",
+      deviceWarning:
+        "Heads up: during setup Meta unlinks all your linked devices (WhatsApp Web, desktop). You'll need to link them again afterwards.",
     },
   });
 
@@ -266,6 +270,11 @@ export function ConnectWhatsApp({
             {busy ? t.connecting : !sdkReady ? t.loading : t.connect}
           </button>
           <p className="text-xs text-slate-500">{t.help}</p>
+          {/* Coexistence onboarding unlinks every companion client. Surfacing
+              it before the popup avoids a support ticket after the fact. */}
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            {t.deviceWarning}
+          </p>
         </>
       )}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}

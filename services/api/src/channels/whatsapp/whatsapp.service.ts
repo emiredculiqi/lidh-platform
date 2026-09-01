@@ -17,7 +17,12 @@ import {
   type InboundWhatsAppMessage,
   type WhatsAppTransport,
 } from "./transport";
-import type { AccountEvent, EchoMessage } from "./meta-webhook.parser";
+import type {
+  AccountEvent,
+  ContactSyncEntry,
+  EchoMessage,
+  HistoryChunk,
+} from "./meta-webhook.parser";
 import { loadTenantEntitlements } from "../../tenants/entitlements";
 
 const ALL_TOOLS: ToolName[] = ["capture_lead", "request_human_handoff"];
@@ -50,6 +55,18 @@ export function normalizeKeyword(text: string): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[^a-z]/g, "");
+}
+
+/**
+ * Prisma's unique-constraint error. During history backfill this is the normal
+ * "already imported" path, not a failure, so it is filtered from the logs.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    (err as { code?: unknown }).code === "P2002"
+  );
 }
 
 /**
@@ -365,6 +382,154 @@ export class WhatsappService {
     await this.transport.sendText(msg.from, reply, {
       phoneNumberId,
       accessToken,
+    });
+  }
+
+  /**
+   * Persist one chunk of coexistence history into the inbox.
+   *
+   * Idempotent by construction: Message.providerMessageId is uniquely indexed,
+   * so a replayed or overlapping chunk collides and is skipped rather than
+   * duplicating a thread. This matters because Meta may resend chunks and the
+   * 3-phase delivery can overlap at the boundaries.
+   *
+   * The agent is never invoked here — this is backfill of conversations that
+   * already happened, not new inbound traffic.
+   */
+  async handleHistoryChunk(chunk: HistoryChunk): Promise<void> {
+    const db = this.prisma.client;
+    const channel = await this.findConnectedChannel(chunk.businessNumber);
+    if (!channel) {
+      this.logger.warn(
+        `history chunk for unknown number "${chunk.businessNumber}" — ignored`,
+      );
+      return;
+    }
+
+    let imported = 0;
+    for (const msg of chunk.messages) {
+      try {
+        const contact = await db.contact.upsert({
+          where: {
+            tenantId_phone: { tenantId: channel.tenantId, phone: msg.customer },
+          },
+          update: {},
+          create: {
+            tenantId: channel.tenantId,
+            phone: msg.customer,
+            source: "whatsapp",
+          },
+        });
+
+        let conversation = await db.conversation.findFirst({
+          where: {
+            tenantId: channel.tenantId,
+            channelId: channel.id,
+            contactId: contact.id,
+          },
+          orderBy: { lastMsgAt: "desc" },
+        });
+        if (!conversation) {
+          conversation = await db.conversation.create({
+            data: {
+              tenantId: channel.tenantId,
+              channelId: channel.id,
+              contactId: contact.id,
+              kind: "customer",
+              status: "open",
+              channelRef: msg.customer,
+              lastMsgAt: msg.sentAt ?? undefined,
+            },
+          });
+        }
+
+        await db.message.create({
+          data: {
+            conversationId: conversation.id,
+            tenantId: channel.tenantId,
+            // "assistant" = the business side of the thread. Matches how
+            // handleEcho stores owner-typed messages; MessageRole has no
+            // separate human value, and the inbox renders both the same way.
+            role: msg.fromBusiness ? "assistant" : "user",
+            contentText: msg.text,
+            providerMessageId: msg.providerMessageId ?? null,
+            ...(msg.sentAt ? { createdAt: msg.sentAt } : {}),
+          },
+        });
+        imported++;
+      } catch (err) {
+        // A unique-constraint collision on providerMessageId is the expected
+        // path for an already-imported message — not an error worth shouting.
+        if (!isUniqueViolation(err)) {
+          this.logger.warn(
+            `history import failed for ${msg.providerMessageId ?? "?"}: ` +
+              `${err instanceof Error ? err.message : "unknown"}`,
+          );
+        }
+      }
+    }
+
+    this.logger.log(
+      `history chunk imported: ${imported}/${chunk.messages.length} new ` +
+        `(phase=${chunk.phase ?? "?"} chunk=${chunk.chunkOrder ?? "?"} ` +
+        `progress=${chunk.progress ?? "?"}%)`,
+    );
+
+    await this.recordHistoryProgress(channel.id, chunk);
+  }
+
+  /** Persist sync progress so the dashboard can show it and spot a stall. */
+  private async recordHistoryProgress(
+    channelId: string,
+    chunk: HistoryChunk,
+  ): Promise<void> {
+    const db = this.prisma.client;
+    const channel = await db.channel.findUnique({ where: { id: channelId } });
+    if (!channel) return;
+    const cfg = (channel.config ?? {}) as Record<string, unknown>;
+    const prev = (cfg.historySync ?? {}) as Record<string, unknown>;
+    await db.channel.update({
+      where: { id: channelId },
+      data: {
+        config: {
+          ...cfg,
+          historySync: {
+            ...prev,
+            phase: chunk.phase,
+            progress: chunk.progress,
+            lastChunkAt: new Date().toISOString(),
+            ...(chunk.progress === 100
+              ? { completedAt: new Date().toISOString() }
+              : {}),
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Persist a coexistence contact-sync row (the owner's WhatsApp address book).
+   * "remove" is intentionally NOT a delete — the business may already have a
+   * conversation with that person, and dropping the Contact would cascade it
+   * away. We only add or update names.
+   */
+  async handleContactSync(entry: ContactSyncEntry): Promise<void> {
+    const db = this.prisma.client;
+    const channel = await this.findConnectedChannel(entry.businessNumber);
+    if (!channel) return;
+    if (entry.action === "remove") return;
+
+    await db.contact.upsert({
+      where: {
+        tenantId_phone: { tenantId: channel.tenantId, phone: entry.phone },
+      },
+      update: entry.fullName ? { name: entry.fullName } : {},
+      create: {
+        tenantId: channel.tenantId,
+        phone: entry.phone,
+        name: entry.fullName ?? null,
+        source: "whatsapp",
+      },
     });
   }
 
