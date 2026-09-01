@@ -1,65 +1,107 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repository.
 
 ## What this repo is
 
-Marketing site for **Lidh.al** — customer support and lead management for Albanian businesses. Live at https://lidh.al. Single-page Next.js App Router site with two API routes: `/api/contact` (Resend) and `/api/chat` (streaming Claude chatbot with tool-driven lead capture and human handoff).
+**Lidh.al Platform** — a multi-tenant customer-conversation platform for Albanian
+businesses. One shared team inbox for the messages a business gets on WhatsApp,
+Instagram, Messenger and its website.
+
+We sell the **inbox**, not the AI. An assistant drafts and (once the owner trusts
+it) answers, but autonomy is a ladder the owner climbs, not the headline feature —
+see **ADR-018** in [docs/decisions.md](docs/decisions.md). Keep that framing in
+user-facing copy: lead with conversations and control, not with AI.
+
+> This is **not** the marketing site. `lidh.al` lives in a separate repo
+> (`lidh-website`, see ADR-012) and is neither built nor deployed from here.
+> If you are looking for `content/site.ts` or `lib/mailer.ts`, you are in the
+> wrong repository.
+
+Full overview: [docs/platform.md](docs/platform.md).
+
+## Layout
+
+```
+apps/dashboard    Next.js 15 App Router · Clerk · app.lidh.al   → Vercel
+services/api      NestJS + Fastify · REST /v1 · api.lidh.al     → Fly.io (lidh-api)
+packages/core     agent runtime — runAgent, personas, prompts
+packages/db       Prisma schema + client                        → Neon Postgres
+```
 
 ## Commands
 
 ```bash
-npm run dev          # local dev server (http://localhost:3000)
-npm run build        # production build
-npm run start        # serve the production build
-npm run lint         # ESLint (eslint-config-next)
-npm run test:smtp    # send a test email through Resend to CONTACT_TO_EMAIL
+pnpm install
+pnpm dev                                   # turbo: all workspaces
+pnpm build && pnpm lint && pnpm typecheck   # turbo, all workspaces
+
+pnpm --filter @lidh/api test               # Vitest (services/api)
+cd packages/db && npx prisma generate       # after ANY schema.prisma change
 ```
 
-There is no test framework — `test:smtp` is a one-off script ([scripts/test-smtp.ts](scripts/test-smtp.ts)) for verifying the Resend pipeline, not a unit-test runner.
+Migrations are **hand-authored** — create `packages/db/prisma/migrations/<UTC-timestamp>_<name>/migration.sql`
+following the existing files. Do not rely on `prisma migrate dev` to name them.
 
-## Required env vars
+## Architecture rules
 
-Set in `.env.local` (and on Vercel):
+- **One brain, many envelopes.** Web chat and WhatsApp both call `runAgent` from
+  `@lidh/core`. The channel changes only streaming vs not, and delivery. Do not
+  fork agent logic per channel.
+- **Tenant isolation is enforced in application code**, via `assertCanAccessTenant`
+  / `assertTenantRole` reading an AsyncLocalStorage context seeded by the global
+  Clerk `AuthGuard`. There is **no Postgres RLS** — every new query must be scoped
+  by `tenantId` deliberately.
+- **Entitlements are derived, never materialized** (ADR-017). An expired trial
+  *freezes* to read-only; it never locks the owner out.
+- **Real-time is single-instance.** Live updates and human takeover use an
+  in-process `EventEmitter` and the API runs as one Fly machine. Scaling to 2+
+  needs Redis pub/sub first — this breaks silently, not loudly.
+- **Prompt caching is a cost requirement** (ADR-001 #7): keep the system-prompt
+  prefix stable and the tool list deterministic. No per-request tools.
 
-- `RESEND_API_KEY` — Resend API key
-- `RESEND_FROM` — sender, e.g. `"Lidh.al <noreply@lidh.al>"` (domain must be verified in Resend)
-- `CONTACT_TO_EMAIL` — inbox that receives lead notifications and chatbot handoffs
-- `ANTHROPIC_API_KEY` — Claude API key for the chatbot. Without it, `/api/chat` returns 503.
-- `ANTHROPIC_MODEL` — optional override. Defaults to `claude-haiku-4-5` (the right model for FAQ + lead capture; fast and cheap). Use `claude-sonnet-4-6` / `claude-opus-4-7` for higher quality.
+## Conventions
 
-[lib/mailer.ts](lib/mailer.ts) throws on first send if Resend vars are missing. [app/api/chat/route.ts](app/api/chat/route.ts) returns 503 if `ANTHROPIC_API_KEY` is missing.
+- New user-facing strings are **bilingual (AL + EN)** — `useT({al, en})` in client
+  components, `<T al="…" en="…" />` in server components. Never hardcode one language.
+- Secrets never touch the DB unencrypted: `CryptoService` (AES-256-GCM) wraps
+  provider tokens into `Channel.credentialsEnc`.
+- Provider webhooks are `@Public()` and authenticated by signature, not by Clerk —
+  WhatsApp via `X-Hub-Signature-256` over the **raw body**, Meta app callbacks via
+  `signed_request`. Preserve `rawBody: true` in `main.ts` or HMAC verification breaks.
+- Prefer extending an existing service over adding a parallel one; the agent
+  orchestration in `whatsapp.service.ts` and `chat.service.ts` is knowingly
+  duplicated (ADR-004) — do not deepen the split.
 
-## Architecture
+## WhatsApp / Meta
 
-**One page, composed from sections.** [app/page.tsx](app/page.tsx) renders `Header`, then stacks the section components from [components/sections/](components/sections/) (`Hero`, `Benefits`, `UseCases`, `About`, `Contact`), then `Footer`. There is no routing beyond this page and the contact API.
+We are a direct Meta **Tech Provider** using **Coexistence** (the owner keeps the
+WhatsApp Business App on their phone; we answer on the same number).
 
-**Content is data, not JSX.** All marketing copy lives in [content/site.ts](content/site.ts) (typed as `SiteContent`) and [content/use-cases.ts](content/use-cases.ts). Each entry is a `{ al, en }` bundle. Components never hardcode strings — they call `useT(siteContent)` from [lib/i18n.tsx](lib/i18n.tsx) and read `t.someKey`. To add copy: extend the `SiteContent` type, add the key under both `al` and `en`, then reference `t.yourKey` in the component.
+- Architecture and env vars: [docs/whatsapp.md](docs/whatsapp.md)
+- App Review status, requirements and gaps: [docs/meta-app-review.md](docs/meta-app-review.md)
 
-**i18n is client-side only.** [lib/i18n.tsx](lib/i18n.tsx) is a `"use client"` `LocaleProvider` mounted in [app/layout.tsx](app/layout.tsx). Locale (`al` default, `en`) is persisted to `localStorage` under `lidh.locale` and also written to `document.documentElement.lang` (`sq`/`en`). Any component using `useT`/`useLocale` must be a client component or a child of one.
+Two rules that are easy to break:
 
-**Contact flow.**
-- Client: [components/sections/Contact.tsx](components/sections/Contact.tsx) POSTs JSON to `/api/contact`.
-- Server: [app/api/contact/route.ts](app/api/contact/route.ts) Zod-validates (`runtime = "nodejs"`), then calls `sendContactEmail` from [lib/mailer.ts](lib/mailer.ts).
-- Mailer sets `replyTo` to the submitter so replies from the inbox go straight to the customer; renders both text and HTML versions; HTML fields are escaped via the local `escapeHtml`.
-- Responses: `200 {ok:true}`, `400 invalid_json`, `422 invalid_input` (with Zod `flatten()`), `502 email_failed`. Keep these contracts when editing.
-- Note: route schema currently requires `phone` (min 1) even though `ContactPayload` types it optional — if you change one, change both.
+- **Never register a coexistence number** (`/register`) — it must stay on the
+  Business App.
+- **WhatsApp data may not train shared models.** Meta permits fine-tuning only for
+  *exclusive use*. Learning across businesses from WhatsApp conversations is
+  prohibited; learning from one owner's own approved replies is fine. Web-widget
+  conversations are unaffected.
 
-**Styling.** Tailwind with brand tokens in [tailwind.config.ts](tailwind.config.ts) (`brand.deep/blue/sky/mint/ink/fog`, `accent.orange*`, `bg-brand-gradient`, `shadow-glow`, `animate-float|shimmer|gradient-shift`). Fonts loaded via `next/font/google` in [app/layout.tsx](app/layout.tsx) and exposed as `--font-inter` / `--font-jakarta`. Prefer existing tokens over arbitrary hex/animation values.
+## Operational reality
 
-**Path alias.** `@/*` → repo root (see [tsconfig.json](tsconfig.json)).
+- **No staging.** One Fly app, one Vercel project, work happens on `main`.
+  Anything that writes data deserves a dry run and a way back.
+- `NEXT_PUBLIC_*` values are inlined at **build time** — setting them in Vercel
+  does nothing until the dashboard is redeployed.
+- The WhatsApp transport is real only when `META_APP_ID` is set; otherwise a stub
+  logs instead of sending.
 
-**Chatbot.**
-- Floating widget [components/Chat/ChatWidget.tsx](components/Chat/ChatWidget.tsx) is mounted once in [app/layout.tsx](app/layout.tsx) so it's available on every page. Persists conversation in `localStorage` under `lidh.chat`. Reads locale via `useLocale()`.
-- Server: [app/api/chat/route.ts](app/api/chat/route.ts) (`runtime = "nodejs"`, `maxDuration = 60`) Zod-validates `{messages, locale}`, then runs an agentic loop using `client.messages.stream()` from `@anthropic-ai/sdk`. Streams **SSE** to the client (`event: text|effect|done|error`).
-- System prompt: [lib/chat/prompt.ts](lib/chat/prompt.ts) — separate AL/EN personas + shared business facts, wrapped in a single `text` block with `cache_control: { type: "ephemeral" }` so the prefix caches across turns. Tools render before system, so the tool list must stay deterministic — don't add per-request tools.
-- Tools: `capture_lead` and `request_human_handoff`. Both are server-executed in `runTool()` and call `emailLead`/`emailHandoff` from [lib/chat/handoff.ts](lib/chat/handoff.ts), which reuses `sendContactEmail` from [lib/mailer.ts](lib/mailer.ts). Tool execution emits an `effect` SSE event (`lead_captured` / `human_handoff`) the widget renders as a confirmation banner.
-- WhatsApp handoff number `+355 69 520 1250` is hardcoded as `WHATSAPP_NUMBER` in [lib/chat/handoff.ts](lib/chat/handoff.ts) and `WHATSAPP_HREF` in [components/Chat/ChatWidget.tsx](components/Chat/ChatWidget.tsx) — keep them in sync if it changes.
-- Limits: `MAX_HISTORY=40`, `MAX_MESSAGE_CHARS=4000`, `MAX_AGENTIC_TURNS=4`, `CHAT_MAX_TOKENS=1024` (in [lib/chat/prompt.ts](lib/chat/prompt.ts)).
+## Working style
 
-## Conventions worth keeping
-
-- `lib/mailer.ts` is `import "server-only"` — never import it from a client component.
-- New translatable strings go in `content/*.ts`, not inline in JSX.
-- Section components live in [components/sections/](components/sections/); shared primitives in [components/ui/](components/ui/) (e.g. `Container`); scroll-reveal wrapper is [components/animations/Reveal.tsx](components/animations/Reveal.tsx).
-- Brand colors are referenced as Tailwind classes (`text-brand-deep`, `bg-brand-gradient`), not raw hex.
+Explain the reasoning before making a change, and stop at genuine decision points
+rather than assuming. Verify claims against the code or a live probe instead of
+asserting from memory — several documents in this repo have been stale, and this
+file was itself wrong for months.

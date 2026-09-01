@@ -9,6 +9,11 @@ answers on the same number via the API. Inbound messages are handled by the same
 > This supersedes the earlier WhatChimp plan (ADR-004). The WhatChimp transport
 > and webhook route have been removed.
 
+> **Go-live is gated on Meta App Review.** See
+> [meta-app-review.md](./meta-app-review.md) for the requirement checklist, our
+> status against it, and the WhatsApp Business terms that bind us as a Solution
+> Provider (including the AI-training restrictions).
+
 ## Message flow
 
 ```
@@ -61,7 +66,20 @@ Dashboard: `components/ConnectWhatsApp.tsx` (self-serve connect on the business
   `131047` → the dashboard shows a "delivery_failed" notice (template re-engagement is a future add).
 - **Account events**: `account_offboarded` / `account_reconnected` flip
   `Channel.status` automatically.
-- Do NOT register the number for coexistence; throughput cap is ~5 msg/s.
+- Do NOT register the number for coexistence.
+- **Throughput is a fixed, non-upgradable 20 messages/second** for a coexistence
+  number — it cannot be raised the way a Cloud-API-only number's can.
+- Onboarding **unlinks all existing companion devices** (WhatsApp Web, desktop);
+  the owner must re-link them. Max 4 companions; Windows and WearOS unsupported.
+- **History sync**: 180 days of messages + all contacts, **within 24h of
+  onboarding** or the customer must be offboarded and redone. It is a **pull**:
+  `ChannelsService.requestHistoryBackfill()` POSTs to `/{phone-number-id}/smb_app_data`
+  right after a coexistence connect — Meta sends nothing unasked. The replay
+  arrives on the `history` (3 phases × N ordered chunks, `progress: 100` = done)
+  and `smb_app_state_sync` (contacts) webhook fields, both of which must be
+  subscribed on the Meta app. Import is idempotent: `Message.providerMessageId`
+  is uniquely indexed, so resent or overlapping chunks collide and are skipped.
+  Historical media is not downloaded yet.
 
 ## Environment variables
 
@@ -71,12 +89,18 @@ Dashboard: `components/ConnectWhatsApp.tsx` (self-serve connect on the business
 |---|---|
 | `CREDENTIAL_ENC_KEY` | 32-byte base64 (`openssl rand -base64 32`) — encrypts stored tokens. Required before any connect. |
 | `META_APP_ID` / `META_APP_SECRET` | Meta App creds. `META_APP_ID` set = MetaCloudTransport active (else Stub). App secret verifies webhook HMAC. |
-| `META_CONFIG_ID` | Facebook Login for Business config id (Embedded Signup). |
+| ~~`META_CONFIG_ID`~~ | **Not read by the API.** The Embedded Signup config id is a browser-side value — set `NEXT_PUBLIC_META_CONFIG_ID` on the *dashboard's Vercel project* instead. Setting it as a Fly secret has no effect. |
 | `META_WEBHOOK_VERIFY_TOKEN` | Webhook subscription verify token. |
 | `META_GRAPH_VERSION` | Graph version (default `v22.0`). |
 
-**Dashboard (`apps/dashboard`)** — public, build-time:
+**Dashboard (`apps/dashboard`)** — set in the **Vercel** project, not on Fly:
 `NEXT_PUBLIC_META_APP_ID`, `NEXT_PUBLIC_META_CONFIG_ID`, `NEXT_PUBLIC_META_GRAPH_VERSION`.
+
+> These are **inlined at build time**, so setting them in Vercel is not enough —
+> the dashboard must be **redeployed** afterwards or the browser still ships the
+> old (empty) values. If `NEXT_PUBLIC_META_CONFIG_ID` is missing, `connect()`
+> returns early at `ConnectWhatsApp.tsx` and the button silently does nothing;
+> if `NEXT_PUBLIC_META_APP_ID` is missing the card renders "not configured".
 
 Webhook callback URL to configure in the Meta App: `https://api.lidh.al/v1/webhooks/whatsapp`.
 

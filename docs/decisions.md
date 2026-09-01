@@ -798,3 +798,78 @@ a **permanent** grant until an admin revokes it — real billing cycles /
   `@nestjs/schedule` reminder job (T-7/T-3/T-1/T-0) with a "reminder-sent"
   marker. Owner-phone capture (for later WhatsApp reminders), hard conversation
   caps, self-serve checkout and BSP/consolidated billing are explicitly M3+.
+
+---
+
+## ADR-018 — Reposition: a multi-channel conversation platform, AI second
+
+**Status:** Accepted · 2026-08-06. Supersedes the implicit positioning behind
+ADR-001 and ADR-009/010 (an "AI assistant" product with channels attached).
+
+- **Context:** The product was conceived AI-first — an agent that answers for a
+  business, with WhatsApp/web as delivery. Selling that in Albania means
+  teaching the market to trust AI *before* they can evaluate the product. That
+  is a cost we cannot carry as an unknown vendor. Meanwhile the thing local
+  businesses already feel as daily pain is scattered conversations: DMs on
+  Instagram, WhatsApp, Messenger and website chat, each in a different app, with
+  no shared history and nothing written down.
+- **Technical term:** *category repositioning — the same system sold as a
+  unified customer-conversation platform (shared team inbox) rather than as a
+  conversational-AI product.*
+- **Plain:** We sell the inbox, not the robot. The assistant becomes a feature
+  that makes the salesperson faster, not the reason to buy.
+
+### Decision 1 — The promise is "every customer conversation in one place"
+
+Scope is **inbox + comments**: DMs across WhatsApp, Instagram, Messenger and the
+web widget, plus replying to post/ad comments and comment→DM capture.
+
+**Publishing/scheduling and ads management are explicitly out of scope.** They
+are a separate product with their own integrations and calendar UI; promising
+them alongside the inbox is how this drowns. When a prospect asks "where do I
+schedule posts?", the answer is "we don't — we handle the replies".
+
+### Decision 2 — AI autonomy is a ladder the owner climbs, not a quota
+
+| Level | Behaviour |
+|---|---|
+| 0 — Off | Humans only. The default, and a complete product on its own. |
+| 1 — Suggest | Assistant drafts; the salesperson edits and sends. Nothing goes out unread. |
+| 2 — Narrow auto | Auto-answers only safe intents (hours, address, "we'll get back to you"). |
+| 3 — Broad auto | Auto-replies generally; human takeover always one click away. |
+
+The system **proposes** promotion from the account's own data — primarily
+**edit rate**, the share of drafts sent unchanged — and the **owner decides**.
+
+- **Why not a message quota:** a count measures volume, not readiness. 100 sent
+  messages says nothing; 140 replies sent 92% unedited says a great deal. A
+  hard cap also creates a cliff — either the assistant stops working, or it
+  auto-enables and we have taken away the control we promised.
+- **Why the owner flips the switch, not us:** "Lidh.al reviews your account
+  before unlocking" makes us the bottleneck on our customer's product and caps
+  our own growth with manual work.
+- **Wedge:** after-hours. Nobody objects to the assistant answering at 02:00
+  when the alternative is silence until morning.
+
+### Decision 3 — Plans gate channels and seats, not WhatsApp
+
+Reverses the "WhatsApp is the Premium hook" decision. Gating the channel
+Albanians actually use behind the upper tier directly contradicts a pricing page
+that promises to unify their channels. Growth now comes from connecting more
+channels and adding more salespeople — both of which track the value delivered.
+
+### Consequences
+
+- **Marketing language drops AI as the headline.** This is about the *buyer*.
+  End-user AI disclosure in the chat surfaces stays and is non-negotiable — it
+  is a Meta requirement and simple honesty. Two different audiences.
+- **Compliance improves.** Meta bars AI providers only "when such technologies
+  are the primary (rather than incidental or ancillary) functionality"; an inbox
+  where AI assists a human is unambiguously on the safe side.
+- **Cross-tenant persona learning stays dead** (see the WhatsApp terms notes in
+  `meta-app-review.md`), but the ladder gives us a better and lawful substitute:
+  learning from *this* owner's approved replies, for *this* owner only, which is
+  exactly the exclusive-use fine-tuning carve-out.
+- **Honest scope:** Instagram and Messenger are currently "soon" placeholders in
+  the dashboard; comments are not built at all. The repositioning is a decision
+  about direction, not a claim about shipped capability.
