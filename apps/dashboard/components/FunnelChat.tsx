@@ -51,7 +51,10 @@ export function FunnelChat({
 
   const t = useT({
     al: {
-      poweredBy: "Mundësuar nga Lidh.al",
+      // AI disclosure: the end user must be able to tell they are talking to an
+      // automated assistant, not a person. Kept in the same line as the vendor
+      // credit so it is visible without adding chrome.
+      poweredBy: "Asistent me IA · Mundësuar nga Lidh.al",
       askAnything: (business: string) =>
         `Pyetni çfarëdo për ${business} — orare, shërbime, çmime…`,
       messagePlaceholder: "Shkruani një mesazh…",
@@ -60,7 +63,7 @@ export function FunnelChat({
       failed: "Diçka shkoi keq. Provoni përsëri.",
     },
     en: {
-      poweredBy: "Powered by Lidh.al",
+      poweredBy: "AI assistant · Powered by Lidh.al",
       askAnything: (business: string) =>
         `Ask anything about ${business} — hours, services, prices…`,
       messagePlaceholder: "Write a message…",

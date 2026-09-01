@@ -120,7 +120,9 @@ export function ConnectWhatsApp({
       } catch {
         return;
       }
-      if (!host.endsWith("facebook.com")) return;
+      // Exact host, or a true subdomain of it. A bare endsWith() would also
+      // accept "evilfacebook.com" and let any origin feed us a WABA id.
+      if (host !== "facebook.com" && !host.endsWith(".facebook.com")) return;
       try {
         const data =
           typeof event.data === "string" ? JSON.parse(event.data) : event.data;

@@ -130,7 +130,8 @@
     ".ibox textarea::placeholder{color:rgba(11,42,107,.4)}" +
     ".ibox .send{flex:none;width:36px;height:36px;border:none;border-radius:8px;cursor:pointer;background:" + GRAD + ";color:#fff;display:flex;align-items:center;justify-content:center;transition:opacity .15s}" +
     ".ibox .send:disabled{opacity:.4;cursor:not-allowed}" +
-    ".credit{text-align:center;font-size:10px;color:rgba(11,42,107,.4);margin-top:6px}" +
+    // Carries the AI disclosure, so it must stay legible — not decorative chrome.
+    ".credit{text-align:center;font-size:11px;color:rgba(11,42,107,.6);margin-top:6px}" +
     "</style>" +
     '<div class="ring"></div>' +
     '<button class="launch" aria-label="Chat"><span class="ic">' + I_MSG + "</span></button>" +
@@ -141,7 +142,9 @@
     '<div class="msgs"></div>' +
     '<div class="foot"><form class="ibox"><textarea rows="2" placeholder="' + (al ? "Shkruaj mesazhin..." : "Type your message...") + '"></textarea>' +
     '<button class="send" type="submit" aria-label="Send" disabled>' + I_SEND + "</button></form>" +
-    '<div class="credit">Powered by Lidh.al</div></div>' +
+    // AI disclosure — the end user must be able to tell the replies are
+    // automated. Localised alongside the vendor credit so it costs no chrome.
+    '<div class="credit">' + (al ? "Asistent me IA · Mundësuar nga Lidh.al" : "AI assistant · Powered by Lidh.al") + "</div></div>" +
     "</div>";
 
   var $ = function (s) { return root.querySelector(s); };
