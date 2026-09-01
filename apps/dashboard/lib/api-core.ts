@@ -26,8 +26,12 @@ export type Tenant = {
   trialEndsAt: string | null;
   // FK to Plan when admin has assigned one (manual, post-payment).
   planId: string | null;
-  // Computed server-side: status=active AND (trialEndsAt>now OR planId set).
+  // Computed server-side: chatEnabled — trialing/grace/subscribed (grace-aware).
   isActive: boolean;
+  // Entitlement state (ADR-017): trialing | grace | expired | subscribed | archived.
+  state: "trialing" | "grace" | "expired" | "subscribed" | "archived";
+  // Dashboard access mode: full | read_only (frozen — reads ok, writes 403) | none (archived).
+  dashboard: "full" | "read_only" | "none";
   status: "active" | "archived";
   archivedAt: string | null;
   // ADR-015: email pre-assigned by admin while the owner hasn't signed up

@@ -16,7 +16,7 @@ import type {
   FunnelResolveResponseDto,
   TenantResponseDto,
 } from "./dto/tenant-response.dto";
-import { loadTenantEntitlements } from "./entitlements";
+import { loadTenantEntitlements, resolveEntitlements } from "./entitlements";
 
 // Read at call-time, NOT module top-level: @nestjs/config loads .env during
 // bootstrap, after this module is imported. A top-level const captures undef.
@@ -537,6 +537,14 @@ export class TenantsService {
   }
 
   private toTenantResponse(t: TenantWithOwner): TenantResponseDto {
+    // state / dashboard / chatEnabled don't depend on the plan's WhatsApp flag,
+    // so the PURE resolver suffices here — keeps this method sync (no DB, no
+    // async ripple through its callers). ADR-017.
+    const ent = resolveEntitlements({
+      status: t.status,
+      trialEndsAt: t.trialEndsAt,
+      planId: t.planId,
+    });
     return {
       id: t.id,
       slug: t.slug,
@@ -545,7 +553,9 @@ export class TenantsService {
       funnelUrl: `${appBaseUrl()}/b/${t.slug}`,
       trialEndsAt: t.trialEndsAt,
       planId: t.planId,
-      isActive: isTenantActive(t),
+      isActive: ent.chatEnabled,
+      state: ent.state,
+      dashboard: ent.dashboard,
       status: t.status,
       archivedAt: t.archivedAt,
       pendingOwnerEmail: t.pendingOwnerEmail,
@@ -553,28 +563,4 @@ export class TenantsService {
       createdAt: t.createdAt,
     };
   }
-}
-
-/**
- * Single source of truth for "is the funnel/widget allowed to serve?". Used
- * by getFunnel and (eventually) by the chat runtime to gate replies.
- *
- * Active iff:
- *   - status !== archived (admin hasn't paused), AND
- *   - (trialEndsAt > now)  OR  (planId is set)
- *
- * planId-by-itself means active for now — once subscriptions get real
- * billing cycles, add a `Tenant.planExpiresAt` check here. Until then, a
- * planId is treated as a permanent grant (admin manually assigned it after
- * payment, admin will revoke it if the customer stops paying).
- */
-export function isTenantActive(t: {
-  status: string;
-  trialEndsAt: Date | null;
-  planId: string | null;
-}): boolean {
-  if (t.status === "archived") return false;
-  if (t.trialEndsAt && t.trialEndsAt.getTime() > Date.now()) return true;
-  if (t.planId) return true;
-  return false;
 }

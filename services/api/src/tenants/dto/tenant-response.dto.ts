@@ -53,6 +53,26 @@ export class TenantResponseDto {
 
   @ApiProperty({
     description:
+      "Entitlement state derived from status/trial/plan (ADR-017): trialing, " +
+      "grace (trial lapsed, within the 3-day soft window), expired (frozen), " +
+      "subscribed, or archived.",
+    example: "trialing",
+    enum: ["trialing", "grace", "expired", "subscribed", "archived"],
+  })
+  state!: string;
+
+  @ApiProperty({
+    description:
+      "Dashboard access mode. `full` = normal operate + configure; " +
+      "`read_only` = frozen (view leads/contacts/conversations, but every " +
+      "mutation returns 403 subscription_required); `none` = archived.",
+    example: "full",
+    enum: ["full", "read_only", "none"],
+  })
+  dashboard!: string;
+
+  @ApiProperty({
+    description:
       "Service state. `archived` = subscription paused: the agent stops " +
       "serving on every channel, data retained, reversible via reactivate.",
     example: "active",

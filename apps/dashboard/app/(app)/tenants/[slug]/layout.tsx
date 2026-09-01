@@ -2,6 +2,7 @@ import { api } from "@/lib/api-server";
 import { Sidebar } from "@/components/shell/Sidebar";
 import { Topbar } from "@/components/shell/Topbar";
 import { LiveProvider } from "@/components/shell/LiveProvider";
+import { ReadOnlyBanner } from "@/components/shell/ReadOnlyBanner";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +21,11 @@ export default async function TenantLayout({
   let trialDays: number | null = null;
   let userLabel = "";
   let canManageTeam = false;
+  let dashboardMode = "full";
   try {
     const [tenant, me] = await Promise.all([api.getTenant(slug), api.me()]);
     tenantName = tenant.name;
+    dashboardMode = tenant.dashboard ?? "full";
     userLabel = me.user.name || me.user.email || "";
     // Owner/admin (or platform admin) can manage the team — gates the nav item.
     canManageTeam =
@@ -51,6 +54,7 @@ export default async function TenantLayout({
           canManageTeam={canManageTeam}
         />
         <main className="flex min-w-0 flex-1 flex-col">
+          <ReadOnlyBanner dashboard={dashboardMode} />
           <Topbar slug={slug} />
           <div className="flex-1 p-7">{children}</div>
         </main>
