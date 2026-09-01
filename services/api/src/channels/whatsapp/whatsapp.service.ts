@@ -23,6 +23,36 @@ import { loadTenantEntitlements } from "../../tenants/entitlements";
 const ALL_TOOLS: ToolName[] = ["capture_lead", "request_human_handoff"];
 
 /**
+ * Consent keywords, matched against the WHOLE message after normalization —
+ * never as a substring, so "stop by our store tomorrow" is a normal message.
+ * Albanian forms are listed unaccented because normalizeKeyword strips
+ * diacritics (ÇREGJISTROHU → cregjistrohu).
+ */
+export const OPT_OUT_KEYWORDS = new Set([
+  "stop",
+  "unsubscribe",
+  "cregjistrohu",
+  "ndalo",
+  "hiqmenga",
+]);
+export const OPT_IN_KEYWORDS = new Set(["start", "subscribe", "rifillo"]);
+
+/**
+ * Fold a message down to a bare keyword for exact matching: trim, lowercase,
+ * NFD-decompose, then drop everything that isn't a latin letter — which also
+ * removes the combining accents NFD split off. Punctuation and emoji vanish
+ * ("STOP!" → "stop") while multi-word messages collapse into a single
+ * non-matching token ("stop by" → "stopby"), which is what we want.
+ */
+export function normalizeKeyword(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[^a-z]/g, "");
+}
+
+/**
  * WhatsApp channel orchestration. Same brain as web (@lidh/core runAgent),
  * different envelope: non-streaming (collect the full reply, then send via
  * the WhatsAppTransport port). Provider-agnostic — knows nothing about
@@ -160,6 +190,38 @@ export class WhatsappService {
       role: "user",
       preview: msg.text.slice(0, 120),
     });
+
+    // Consent gate — runs BEFORE the entitlement gate on purpose. The published
+    // privacy policy promises STOP/UNSUBSCRIBE works, and the WhatsApp Business
+    // terms put the consent obligation on us as the Solution Provider ("ensure
+    // your Clients obtain ... legally sufficient consent"). Honouring an opt-out
+    // must therefore never depend on the tenant's plan or trial state.
+    const keyword = normalizeKeyword(msg.text);
+    if (OPT_OUT_KEYWORDS.has(keyword)) {
+      await this.applyConsentChange(
+        { tenant, conversation, channel, contactId: contact.id },
+        msg.from,
+        locale,
+        true,
+      );
+      return;
+    }
+    if (contact.optedOutAt && OPT_IN_KEYWORDS.has(keyword)) {
+      await this.applyConsentChange(
+        { tenant, conversation, channel, contactId: contact.id },
+        msg.from,
+        locale,
+        false,
+      );
+      return;
+    }
+    if (contact.optedOutAt) {
+      // Captured for the inbox (a human may still reply), but the agent stays quiet.
+      this.logger.log(
+        `inbound from opted-out contact ${contact.id} — captured, not answered`,
+      );
+      return;
+    }
 
     // Entitlement gate (ADR-017): the inbound is now CAPTURED (stored + shown
     // in the inbox for review) — but a frozen/expired tenant, or a Basic plan
@@ -304,6 +366,88 @@ export class WhatsappService {
       phoneNumberId,
       accessToken,
     });
+  }
+
+  /**
+   * Record an opt-out (or opt-in) and confirm it once to the customer.
+   *
+   * The confirmation is a direct reply to their just-received message, so it is
+   * inside the 24h customer-service window and needs no template. It is stored
+   * as an assistant message so the operator sees why the thread went quiet.
+   * A send failure must not lose the consent change — the DB write happens
+   * first and the send is best-effort.
+   */
+  private async applyConsentChange(
+    scope: {
+      tenant: { id: string; slug: string };
+      conversation: { id: string };
+      channel: { config: unknown; credentialsEnc: string | null };
+      contactId: string;
+    },
+    to: string,
+    locale: string,
+    optOut: boolean,
+  ): Promise<void> {
+    const db = this.prisma.client;
+    const { tenant, conversation, channel, contactId } = scope;
+
+    await db.contact.update({
+      where: { id: contactId },
+      data: { optedOutAt: optOut ? new Date() : null },
+    });
+    await db.event.create({
+      data: {
+        tenantId: tenant.id,
+        conversationId: conversation.id,
+        kind: optOut ? "contact_opted_out" : "contact_opted_in",
+      },
+    });
+
+    const confirmation = optOut
+      ? locale === "al"
+        ? "U çregjistruat. Nuk do të merrni më përgjigje automatike nga ky numër. Shkruani START për t'u ri-regjistruar."
+        : "You've been unsubscribed. You will no longer receive automated replies from this number. Reply START to opt back in."
+      : locale === "al"
+        ? "U ri-regjistruat. Asistenti do t'ju përgjigjet përsëri."
+        : "You're subscribed again. The assistant will reply to you as before.";
+
+    await db.message.create({
+      data: {
+        conversationId: conversation.id,
+        tenantId: tenant.id,
+        role: "assistant",
+        contentText: confirmation,
+      },
+    });
+    this.live.publish(tenant.id, {
+      type: "message",
+      conversationId: conversation.id,
+      role: "assistant",
+      preview: confirmation.slice(0, 120),
+    });
+    await db.conversation.update({
+      where: { id: conversation.id },
+      data: { lastMsgAt: new Date() },
+    });
+
+    const cfg = (channel.config ?? {}) as { phoneNumberId?: unknown };
+    const phoneNumberId =
+      typeof cfg.phoneNumberId === "string" ? cfg.phoneNumberId : undefined;
+    try {
+      await this.transport.sendText(to, confirmation, {
+        phoneNumberId,
+        accessToken: this.decryptToken(channel.credentialsEnc),
+      });
+    } catch (err) {
+      // Consent is already persisted; a failed confirmation must not undo it.
+      this.logger.error(
+        `consent confirmation send failed for tenant ${tenant.slug}: ` +
+          `${err instanceof Error ? err.message : "unknown"}`,
+      );
+    }
+    this.logger.log(
+      `contact ${contactId} ${optOut ? "opted out" : "opted back in"} (tenant ${tenant.slug})`,
+    );
   }
 
   /**

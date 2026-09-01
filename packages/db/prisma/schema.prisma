@@ -97,6 +97,10 @@ enum EventKind {
   knowledge_source_indexed
   knowledge_source_failed
   funnel_visited
+  // Consent trail: the customer replied STOP/UNSUBSCRIBE (or START) on WhatsApp.
+  // Kept as events so the opt-out history is auditable, not just a timestamp.
+  contact_opted_out
+  contact_opted_in
 }
 
 // Tag on Conversation. Lets us reuse the same agent runtime + tables for
@@ -455,6 +459,10 @@ model Contact {
   source      String? // first channel we saw them on: "web" | "whatsapp" | "instagram"
   firstSeenAt DateTime @default(now())
   lastSeenAt  DateTime @default(now())
+  // Set when the contact opts out (replies STOP/UNSUBSCRIBE/ÇREGJISTROHU on
+  // WhatsApp). While set, the agent must not reply — see WhatsappService.
+  // Cleared if they later opt back in (START).
+  optedOutAt  DateTime?
   meta        Json     @default("{}")
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
