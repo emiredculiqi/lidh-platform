@@ -107,10 +107,13 @@ export class ChannelsService {
       );
     }
 
-    // 4) Fetch the human-readable number for the dashboard.
+    // 4) Fetch the human-readable number for the dashboard, plus the Meta user
+    //    id (needed later to map Deauthorize / Data Deletion callbacks, which
+    //    identify the person only by user_id).
     const info = await this.meta
       .getPhoneNumber(dto.phoneNumberId, accessToken)
       .catch(() => ({}) as { displayPhoneNumber?: string });
+    const metaUserId = await this.meta.getMetaUserId(accessToken);
 
     // 5) Encrypt the token; assemble non-secret config.
     const credentialsEnc = this.crypto.encrypt(accessToken);
@@ -123,6 +126,7 @@ export class ChannelsService {
       displayPhoneNumber: info.displayPhoneNumber ?? null,
       coexistence,
       ...(tokenExpiresAt ? { tokenExpiresAt } : {}),
+      ...(metaUserId ? { metaUserId } : {}),
     };
 
     // 6) Upsert (one whatsapp channel per tenant — @@unique([tenantId, kind])).
@@ -257,6 +261,54 @@ export class ChannelsService {
         },
       },
     });
+  }
+
+  /**
+   * Handle an app-level Meta callback (Deauthorize or Data Deletion Request)
+   * for one Meta user id.
+   *
+   * Both mean the same thing operationally: that person has revoked our app, so
+   * every WhatsApp channel they connected must lose its stored credentials. We
+   * drop the encrypted token and flip the channel to disconnected, keeping the
+   * row so a later reconnect is clean (same shape as an explicit disconnect).
+   *
+   * We deliberately do NOT delete the tenant's conversations here: those belong
+   * to the business (our customer), not to the Meta login, and the business
+   * still owns them under our terms. Tenant-wide erasure is a separate,
+   * authenticated path (DELETE /v1/tenants/:id).
+   *
+   * Returns the number of channels affected. Unmapped user ids return 0 — that
+   * is normal for a user who never completed Embedded Signup.
+   */
+  async revokeForMetaUser(metaUserId: string): Promise<number> {
+    const db = this.prisma.client;
+    const channels = await db.channel.findMany({
+      where: {
+        kind: "whatsapp",
+        config: { path: ["metaUserId"], equals: metaUserId },
+      },
+    });
+    if (channels.length === 0) {
+      this.logger.warn(
+        `Meta callback for unmapped user id ${metaUserId} — nothing to revoke`,
+      );
+      return 0;
+    }
+
+    for (const channel of channels) {
+      await db.channel.update({
+        where: { id: channel.id },
+        data: { status: "disconnected", credentialsEnc: null },
+      });
+      await db.event.create({
+        data: { tenantId: channel.tenantId, kind: "channel_disconnected" },
+      });
+      this.logger.log(
+        `revoked WhatsApp channel ${channel.id} (tenant ${channel.tenantId}) ` +
+          `after Meta callback for user ${metaUserId}`,
+      );
+    }
+    return channels.length;
   }
 
   /**

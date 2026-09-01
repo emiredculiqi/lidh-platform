@@ -139,6 +139,32 @@ export class MetaOnboardingService {
     this.logger.log(`requested ${syncType} for phone ${phoneNumberId}`);
   }
 
+  /**
+   * The app-scoped Meta user id behind an Embedded Signup token.
+   *
+   * Stored on the Channel at connect time so the app-level Deauthorize and Data
+   * Deletion callbacks — which identify the person only by `user_id` — can be
+   * mapped back to a tenant. Without it those callbacks are unactionable.
+   * Best-effort: a failure here must not abort an otherwise good connect.
+   */
+  async getMetaUserId(accessToken: string): Promise<string | undefined> {
+    try {
+      const body = await this.getJson(
+        this.base("me?fields=id"),
+        accessToken,
+        "get me",
+      );
+      return typeof body.id === "string" ? body.id : undefined;
+    } catch (e) {
+      this.logger.warn(
+        `could not resolve Meta user id (deauthorize callbacks will not map): ${
+          e instanceof Error ? e.message : "unknown"
+        }`,
+      );
+      return undefined;
+    }
+  }
+
   /** Fetch the display number + verified name for a phone_number_id. */
   async getPhoneNumber(
     phoneNumberId: string,
