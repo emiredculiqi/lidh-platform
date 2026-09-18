@@ -18,7 +18,7 @@
  *   WA_DISPLAY_NUMBER='+1 555 ...' \
  *   WA_ACCESS_TOKEN='<temporary access token from API Setup>' \
  *     node_modules/.bin/ts-node --transpile-only \
- *       --compiler-options '{"module":"commonjs"}' scripts/seed-wa-test-channel.ts
+ *       --compiler-options '{"module":"commonjs"}' ops/seed-wa-test-channel.ts
  *
  * To remove the test channel later, re-run with WA_ACCESS_TOKEN unset and it
  * will refuse — instead disconnect from the dashboard, or delete the row.

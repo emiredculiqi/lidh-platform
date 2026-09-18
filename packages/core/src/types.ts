@@ -8,13 +8,8 @@ export interface AgentMessage {
   content: string;
 }
 
-/** Tools the platform knows how to run. Per-tenant subset via toolsEnabled.
- *  `search_properties` is the real-estate vertical tool (ADR-016) — enabled
- *  only for agency tenants via Agent.toolsEnabled. */
-export type ToolName =
-  | "capture_lead"
-  | "request_human_handoff"
-  | "search_properties";
+/** Tools the platform knows how to run. Per-tenant subset via toolsEnabled. */
+export type ToolName = "capture_lead" | "request_human_handoff";
 
 /**
  * Everything the chef needs to cook one reply. Assembled by the API shell:

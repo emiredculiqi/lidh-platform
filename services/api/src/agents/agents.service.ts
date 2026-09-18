@@ -60,8 +60,8 @@ export class AgentsService {
     return { tenant, agent };
   }
 
-  /** Set the agent's tool on/off flags (capture_lead, request_human_handoff,
-   *  search_properties, …). Read fresh per request, so next message applies. */
+  /** Set the agent's tool on/off flags (capture_lead, request_human_handoff).
+   *  Read fresh per request, so the next message applies them. */
   async setTools(
     tenantSlug: string,
     tools: Record<string, boolean>,

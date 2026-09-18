@@ -873,3 +873,78 @@ channels and adding more salespeople — both of which track the value delivered
 - **Honest scope:** Instagram and Messenger are currently "soon" placeholders in
   the dashboard; comments are not built at all. The repositioning is a decision
   about direction, not a claim about shipped capability.
+
+## ADR-019 — Retire the real-estate vertical
+
+**Status:** Accepted · 2026-09-18. Removes the work referred to throughout the
+code as "ADR-016" — an entry that was never actually written (the log jumped
+013 → 017; `platform.md` had been warning readers to trust the code instead).
+
+- **Context:** The vertical was built 2026-06-10, before the ADR-018 pivot, as
+  the purest expression of the AI-first product: a structured `Property` table,
+  a `search_properties` agent tool with a four-step search-widening strategy, a
+  `real_estate` persona in five languages, Houzez/geocode ingest scripts, and a
+  live demo tenant (Bela Real Estate). It answered "can the assistant sell
+  apartments?" — a question the business no longer asks. The priority is a
+  business managing its WhatsApp and website conversations in one inbox, with
+  Instagram and Messenger next; the assistant is an option the owner switches on.
+  Meanwhile `services/api/scripts/` had grown into ~950 lines of vertical-specific
+  ingestion holding raw Prisma clients against production, with no rule saying
+  what belonged there.
+- **Technical term:** *feature retirement with schema rollback — removing a
+  vertical end-to-end (tool, persona, service, table, tooling, data) rather than
+  leaving it dormant.*
+- **Plain:** We delete the apartment-search feature entirely instead of leaving
+  it switched off. Dormant code still has to be understood, typed, and migrated
+  around; a feature nobody will sell is not worth that tax.
+
+### Decision 1 — Remove it end-to-end, including the data
+
+Code (`PropertySearchService`, the tool branch and opt-in wiring in
+`chat.service.ts`, the tool definition and `ToolName` member in `@lidh/core`, the
+persona preset), schema (`Property`, `PropertyListingType`, `Tenant.properties`,
+via migration `20260918120000_drop_property_vertical`), the five ingest/seed
+scripts, and the production data — listing rows are dropped with the table; the
+Bela tenant and the DB-backed `real_estate` `PersonaPreset` row are deleted at
+deploy time.
+
+- **Why not just disable it:** `ToolName` is a union every runtime switches on;
+  a dead member still has to be handled everywhere. The persona would remain
+  selectable in the admin console with a prompt ordering the model to call a
+  tool that no longer exists. Dormant is not free.
+- **Why drop the data:** it was scraped for one demo and explicitly not wanted.
+  An export nobody will read is a liability (personal data, retention) not an
+  asset.
+
+### Decision 2 — Keep the knowledge pipeline; it is not vertical-specific
+
+`KnowledgeSource` / `KnowledgeChunk` are written by the dashboard's crawl,
+paste-text and upload features and are the opt-in assistant's memory. The CS-Cart
+scripts only added rows to them. They stay. Any future vertical need is served by
+that pipeline, not by a bespoke table.
+
+### Decision 3 — `scripts/` becomes `ops/`, with a written rule
+
+Four files were never about AI — `freeze-check` (the only dry run for trial
+enforcement, in a system with no staging), two WhatsApp diagnostics, and the test
+seed needed until Meta App Review passes. They move to `services/api/ops/` under a
+README stating the rule: **read-only diagnostics and dev seeds only; anything
+that changes customer data goes through a service behind the API**, where tenant
+isolation and the audit trail apply.
+
+### Consequences
+
+- **The Bela demo at `app.lidh.al/b/bela-real-estate` is gone.** Nothing else
+  demonstrates a vertical; the product is demonstrated by the inbox.
+- `ToolName` is two tools (`capture_lead`, `request_human_handoff`). Every tool
+  is default-on; the opt-in mechanism (`OPT_IN_TOOLS`) was removed with its only
+  member and should be reintroduced only with a second concrete tool.
+- Schema is 17 models. The drop migration is irreversible and runs on the next
+  `fly deploy` — the release command applies pending migrations before traffic
+  flips.
+- **Deploy-time checklist:** after the deploy, `DELETE /v1/tenants/:id` for the
+  Bela tenant (cascades conversations, contacts, leads, personas) and delete the
+  `real_estate` row from `PersonaPreset` — code removal does not touch DB-backed
+  presets (ADR-010).
+- `docs/diagrams.md` remains an M1 snapshot and never showed the vertical; it is
+  stale for other reasons and is tracked separately.

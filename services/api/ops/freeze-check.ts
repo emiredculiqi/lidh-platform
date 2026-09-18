@@ -3,7 +3,7 @@
  * trial-enforcement now freezes it — using the SAME resolver the runtime uses,
  * so there is zero drift from production behavior. Makes NO writes.
  *
- *   pnpm --filter @lidh/api exec tsx scripts/freeze-check.ts   (needs DATABASE_URL)
+ *   pnpm --filter @lidh/api exec tsx ops/freeze-check.ts   (needs DATABASE_URL)
  */
 import { prisma } from "@lidh/db";
 import { loadTenantEntitlements } from "../src/tenants/entitlements";

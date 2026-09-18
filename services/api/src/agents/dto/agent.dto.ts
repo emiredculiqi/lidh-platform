@@ -95,7 +95,6 @@ export class SetToolsDto {
     example: {
       capture_lead: true,
       request_human_handoff: true,
-      search_properties: false,
     },
   })
   @IsObject()

@@ -27,10 +27,11 @@ Albanian SMBs where one or two people answer everything themselves — retail,
 beauty, restaurants, real estate, clinics. The pain is not "I want AI"; it is
 "a customer asked a price on Instagram at 21:00 and nobody saw it until Tuesday".
 
-There is a **real-estate vertical** already built — a `Property` model, a
-property-search tool and a dedicated persona — but no ADR was ever written for
-it (the decision log jumps 013 → 017). Treat the code as the source of truth
-there, not the docs.
+There are **no vertical-specific features.** A real-estate vertical (structured
+listings, a property-search tool, a dedicated persona) was built before the
+ADR-018 pivot and retired in full on 2026-09-18 — see ADR-019. Industry fit
+comes from the persona presets and each business's own knowledge, not from
+bespoke tables.
 
 ### How the assistant earns trust
 
