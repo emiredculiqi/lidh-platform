@@ -11,7 +11,7 @@ import {
 import { PrismaService } from "../common/prisma/prisma.service";
 import { MailService } from "../common/mail/mail.service";
 import { LiveService } from "../common/live/live.service";
-import { RetrievalService } from "./retrieval.service";
+import { RetrievalService, buildRetrievalQuery } from "./retrieval.service";
 import {
   PropertySearchService,
   type PropertyFilters,
@@ -239,19 +239,11 @@ export class ChatService {
     }
 
     // ── RAG retrieval (shell-side) ────────────────────────────────────────
-    // Use the last couple of user turns as context so a short follow-up
-    // ("for my face, anti-wrinkle") still retrieves against what the visitor
-    // asked for earlier in the thread ("a cream") — otherwise the attribute-
-    // only message embeds poorly and matches the wrong products.
-    const recentUserText = history
-      .filter((m) => m.role === "user")
-      .slice(-2)
-      .map((m) => m.content)
-      .join(" ");
-    const retrievalQuery = `${recentUserText} ${dto.message}`.trim().slice(0, 1000);
+    // Query building is shared with the WhatsApp path — see buildRetrievalQuery
+    // for why the last few customer turns are folded in.
     const knowledgeChunks = await this.retrieval.retrieve(
       tenant.id,
-      retrievalQuery,
+      buildRetrievalQuery(history, dto.message),
     );
 
     // ── Build core context ───────────────────────────────────────────────

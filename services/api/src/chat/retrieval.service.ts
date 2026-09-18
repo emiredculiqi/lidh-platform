@@ -4,6 +4,39 @@ import { EmbeddingService } from "../common/embedding/embedding.service";
 
 const TOP_K = 5;
 
+/** Prior customer turns folded into the retrieval query alongside the new one. */
+const QUERY_CONTEXT_TURNS = 2;
+/** Upper bound on the embedded query — one embedding call, keep it cheap. */
+const MAX_QUERY_CHARS = 1000;
+
+/**
+ * Build the text used to SEARCH the knowledge base. This is not what the model
+ * receives — the model gets the real history; this only steers retrieval.
+ *
+ * A short follow-up ("for my face, anti-wrinkle") embeds poorly on its own and
+ * matches the wrong passages, so the customer's last couple of turns are
+ * prefixed to keep the subject ("a cream") in the query. Assistant turns are
+ * excluded deliberately: the agent's own phrasing would pull the search toward
+ * what it already said rather than what was asked.
+ *
+ * Shared by both runtimes, which disagree on whether `history` already contains
+ * `message` — the web path reads history BEFORE persisting the inbound, the
+ * WhatsApp path AFTER. A trailing duplicate is dropped so the new message is
+ * never weighted twice.
+ */
+export function buildRetrievalQuery(
+  history: Array<{ role: string; content: string }>,
+  message: string,
+): string {
+  const userTurns = history
+    .filter((m) => m.role === "user")
+    .map((m) => m.content);
+  if (userTurns[userTurns.length - 1] === message) userTurns.pop();
+
+  const recent = userTurns.slice(-QUERY_CONTEXT_TURNS).join(" ");
+  return `${recent} ${message}`.trim().slice(0, MAX_QUERY_CHARS);
+}
+
 /**
  * RAG retrieval (ADR-001 #3 — runs in the shell, not core).
  *

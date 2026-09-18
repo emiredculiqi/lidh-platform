@@ -11,7 +11,10 @@ import {
 import { PrismaService } from "../../common/prisma/prisma.service";
 import { CryptoService } from "../../common/crypto/crypto.service";
 import { LiveService } from "../../common/live/live.service";
-import { RetrievalService } from "../../chat/retrieval.service";
+import {
+  RetrievalService,
+  buildRetrievalQuery,
+} from "../../chat/retrieval.service";
 import {
   WHATSAPP_TRANSPORT,
   type InboundWhatsAppMessage,
@@ -301,9 +304,11 @@ export class WhatsappService {
       return;
     }
 
+    // Same retrieval query as the web path: a bare inbound ("po, sa kushton?")
+    // embeds poorly and matched the wrong passages here while web got it right.
     const knowledgeChunks = await this.retrieval.retrieve(
       tenant.id,
-      msg.text,
+      buildRetrievalQuery(history, msg.text),
     );
 
     const ctx: AgentContext = {

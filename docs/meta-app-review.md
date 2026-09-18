@@ -2,29 +2,34 @@
 
 Working checklist for taking the Lidh.al Meta app from Dev Mode to Live as a
 **Tech Provider** offering **Coexistence**. Companion to [whatsapp.md](./whatsapp.md),
-which describes the architecture; this file describes the Meta-side gate.
+which describes the architecture; this file describes the Meta-side gate. Gaps that
+outlive App Review (retention, erasure, the privacy policy, the DPA) are tracked in
+[todo.md](./todo.md).
 
-**Status as of 2026-08-06:** Business Verification done, app still in **Dev Mode**,
-App Review **never submitted**. Embedded Signup has never executed once.
+**Status as of 2026-09-11:** Business Verification done, app still in **Dev Mode**,
+App Review **never submitted**. Embedded Signup has never executed once. The
+readiness work below is now **committed but not pushed or deployed** — see the
+banner.
 
-> ### ⚠️ Uncommitted work in the tree (2026-08-06)
+> ### ⚠️ Committed, NOT deployed (2026-09-11)
 >
-> Nothing below has been committed or deployed. The working tree holds **two
-> unrelated features** — commit them separately:
+> The Meta-readiness work was committed on 2026-09-01 as five separate commits
+> (`0ef5bde` consent · `b156717` history sync · `2cbbceb` Meta callbacks ·
+> `3c6b05e` AI disclosure + origin fix · `58840ce` docs). The freeze/read-only
+> work went in separately as `6ff935d`, as this file previously warned.
 >
-> 1. **This work** (Meta readiness): consent/opt-out + migration, Meta callbacks
->    + `signed_request` verification + `/data-deletion` page, coexistence history
->    sync, AI disclosure, Swagger + origin-check fixes, and the docs.
-> 2. **Pre-existing freeze/read-only work**: `ReadOnlyGuard`, `ReadOnlyBanner`,
->    `freeze-check.ts`, and the `auth.module.ts` / `tenants.service.ts` edits.
->    This gates **every write endpoint** — do not ship it by accident.
+> **These commits are still local — 6 unpushed on `main`, and nothing is deployed.**
+> Until a deploy happens:
 >
-> Verified at time of writing: 84 tests pass, typecheck clean, all builds green.
-> The two new callback endpoints return **404 in production** until deployed, so
-> do not configure their URLs in the Meta dashboard yet.
+> - `POST /v1/webhooks/meta/deauthorize` and `/data-deletion` return **404 in
+>   production** — do NOT configure those URLs in the Meta dashboard yet.
+> - `app.lidh.al/data-deletion` does not exist yet (needs a Vercel redeploy).
+> - The `20260806120000_contact_opted_out` migration is **not applied to Neon**.
+>   `fly deploy` runs `prisma migrate deploy` as its release command, so a normal
+>   API deploy applies it — but the STOP handling will throw on `optedOutAt`
+>   until it does. Deploy the API before announcing opt-out anywhere.
 >
-> Also pending: `pnpm --filter @lidh/db db:migrate:deploy` for `optedOutAt` and
-> the two new `EventKind` values.
+> Verified at HEAD: **92 tests pass**, typecheck clean across all 6 workspaces.
 
 ---
 
@@ -58,7 +63,7 @@ customers per rolling 7 days. Above 200/week requires Meta Business Partner stat
 | 9 | App in Live mode | ❌ Dev Mode |
 | 10 | ES on Facebook Login for Business + JS SDK. **ES v2 dies 15 Oct 2026 — must be v4** | ✅ code sends `version: "v4"` — ⚠️ `config_id` presence unconfirmed |
 | 11 | Coexistence prereqs: Tech Provider status, WA Business app **2.24.17+**, a webhook that accepts *and digests* webhooks, ES **with session logging** | ✅ webhook live + HMAC-enforced — ⚠️ session logging unverified |
-| 12 | Coexistence: ≤4 companion clients; **all existing companions are auto-unlinked at onboarding** and must be re-linked. Windows and WearOS unsupported | ❌ Connect UI never warns |
+| 12 | Coexistence: ≤4 companion clients; **all existing companions are auto-unlinked at onboarding** and must be re-linked. Windows and WearOS unsupported | ✅ Connect UI now warns before the popup (`3c6b05e`) |
 | 13 | History sync: 180 days of messages + all contacts; **must be synced within 24h of onboarding** or offboard and redo. It is a **pull** — `POST /{phone-number-id}/smb_app_data` with `sync_type` `history` / `smb_app_state_sync`; nothing arrives unasked. Delivered in 3 phases × N chunks, `progress: 100` = done. Media asset IDs only within 14 days. Owner taps Confirm | ✅ **built** — requested at connect, parsed, imported idempotently. ⚠️ needs the `history` + `smb_app_state_sync` webhook fields subscribed |
 | 14 | Coexistence restrictions: no groups, voice/video, business tools, messaging tools, business profile, channels; disappearing + view-once + live-location off; broadcast lists read-only; **fixed non-upgradable 20 mps** | ⚠️ our docs said 5 msg/s — corrected |
 | 15 | Billing 2026: **per-message** (conversation-based deprecated 1 Jul 2025), charged on template delivery. **1 Oct 2026: free service messages inside the 24h window become billable** | ⚠️ pricing model still assumes conversation-based |
@@ -140,21 +145,30 @@ Two live constraints:
 
 ### P0 — before submitting
 
-- [ ] **Privacy policy contradicts the code.** `lidh.al/privacy` claims *"Lidh.al does
-      not store the full content of WhatsApp conversations in our own databases"* and
-      promises opt-out by replying STOP. Both false: `whatsapp.service.ts:153,279,491`
-      store every inbound body, reply and echo in plaintext (`contentText String? @db.Text`),
-      and no STOP handling exists. Legal exposure independent of Meta; reviewers open
-      that URL. Fix the text (storage is unavoidable — Meta does not archive) and build
-      the opt-out.
-- [ ] **STOP / UNSUBSCRIBE / ÇREGJISTROHU** handling before the agent runs
-- [ ] **`Contact.optedOutAt`** + migration
-- [ ] **Consent capture** — required by the terms, absent entirely
-- [ ] **Disable public Swagger** — `api.lidh.al/docs-json` returns 200 today, serving a
-      stale description claiming *"endpoints are open"*
-- [ ] **AI/bot disclosure** on the widget and funnel chat surfaces
-- [ ] **Data-deletion + deauthorize callbacks** — `lidh.al/data-deletion` is 404.
-      Standard for Facebook Login apps; not confirmed as a hard Meta requirement, but cheap
+- [ ] **Privacy policy still contradicts the code.** `lidh.al/privacy` claims *"Lidh.al
+      does not store the full content of WhatsApp conversations in our own databases"* —
+      false: every inbound body, reply and echo is stored in plaintext
+      (`Message.contentText String? @db.Text`). The STOP half of the page is now true;
+      the storage half is not. Legal exposure independent of Meta, and reviewers open
+      that URL. **The fix is the text, not the code** — storage is unavoidable, Meta
+      does not archive. Lives in the `lidh-website` repo (ADR-012).
+      → tracked as **item 7** in [todo.md](./todo.md)
+- [x] **STOP / UNSUBSCRIBE / ÇREGJISTROHU** handling before the agent runs — runs ahead
+      of the entitlement gate on purpose, so a lapsed plan can never suppress an opt-out
+      (`0ef5bde`)
+- [x] **`Contact.optedOutAt`** + migration `20260806120000_contact_opted_out`
+      (⚠️ not yet applied to Neon — see banner)
+- [ ] **Consent capture** — reactive opt-out now exists, but affirmative consent is a
+      *contractual* obligation on the business ("ensure your Clients obtain"), which
+      needs the DPA → **item 10** in [todo.md](./todo.md)
+- [ ] **Disable public Swagger** — `api.lidh.al/docs-json` still returns 200. The stale
+      "endpoints are open" text was corrected in `58840ce`, but the endpoint itself is
+      live until `fly secrets unset ENABLE_SWAGGER -a lidh-api`
+- [x] **AI/bot disclosure** on the widget and funnel chat surfaces — "AI assistant ·
+      Powered by Lidh.al", bilingual, in both the widget and funnel (`3c6b05e`)
+- [x] **Data-deletion + deauthorize callbacks** — built with `signed_request` HMAC
+      verification and a public status page (`2cbbceb`). ⚠️ 404 in production until
+      deployed; do not configure the URLs in the Meta dashboard yet
 
 ### P1 — coexistence correctness
 
@@ -165,9 +179,10 @@ Two live constraints:
       and are not downloaded; historical media currently imports as `[image message]`
 - [ ] **Retry UI** — if the `smb_app_data` request fails the failure is recorded on
       the channel but there is no dashboard button to retry inside the 24h window
-- [ ] **Companion-device warning** in the Connect UI — onboarding unlinks their devices
-- [ ] **postMessage origin bug** — `host.endsWith("facebook.com")` also matches
-      `evilfacebook.com` (`ConnectWhatsApp.tsx:119`)
+- [x] **Companion-device warning** in the Connect UI — amber notice shown before the
+      popup opens, bilingual (`b156717`)
+- [x] **postMessage origin bug** — now requires the exact host or a true subdomain,
+      so `evilfacebook.com` no longer matches (`3c6b05e`)
 - [ ] **ES session logging** — `sessionInfoVersion: "3"` is set but the payload is held
       in a ref and discarded
 - [x] **Throughput doc corrected** — 20 mps fixed, not 5 msg/s
@@ -179,8 +194,15 @@ Two live constraints:
 - [ ] **`appsecret_proof`** on all Graph calls — everything breaks if "Require
       appsecret_proof" is ever enabled
 - [ ] **`min_machines_running = 1`** — scale-to-zero cold starts vs Meta's webhook retries
-- [ ] **Retention policy + per-contact erasure** — no TTL, no purge job, no scheduler at all
-- [ ] **Tests** for the webhook parser and signature verification — currently zero
+- [ ] **Retention policy + per-contact erasure** — no TTL, no purge job, no scheduler at
+      all. Note the `/data-deletion` callback does NOT cover this: it revokes the
+      *business owner's* Meta login and deliberately leaves conversations intact, so a
+      *customer* asking for erasure has no path at all
+      → **items 8 and 9** in [todo.md](./todo.md)
+- [x] **Tests** for the webhook parser and signature verification — 263-line parser
+      spec (history direction, chunk metadata, contact sync, robustness) and a 77-line
+      `signed_request` spec covering tampering, wrong secret, algorithm downgrade and
+      length mismatch (`b156717`, `2cbbceb`)
 - [ ] **Boot-time env validation** — `ConfigModule` has no `validationSchema`
 - [ ] **ADR** for the WhatChimp → Meta Tech Provider pivot (never written)
 
