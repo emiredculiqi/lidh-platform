@@ -21,10 +21,12 @@ export default async function DashboardPage({
   let usage: Usage | null = null;
   let conversations: ConversationListItem[] = [];
   try {
-    [usage, conversations] = await Promise.all([
+    const [u, list] = await Promise.all([
       api.getUsage(slug),
       api.listConversations(slug),
     ]);
+    usage = u;
+    conversations = list.items;
   } catch {
     // fall through — render what we have
   }

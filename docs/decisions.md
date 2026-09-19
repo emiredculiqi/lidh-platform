@@ -1185,3 +1185,82 @@ and go with the table.
   now links to the contact, not to a dead page.
 - ADR-004's knowing duplication shows again: `recordIntent` exists in both
   `chat.service` and `whatsapp.service`, kept in step by hand.
+
+## ADR-024 — The conversation workspace: search, favorites, team awareness, tasks, drafts
+
+**Status:** Accepted · 2026-09-19. Implemented step by step; each decision
+below notes where it stands.
+
+- **Context:** With the inbox as the product (ADR-018), the thread view is
+  where a team spends its day. Five gaps showed up as soon as two people used
+  it: filters lived in React state and could not search message text; there
+  was no way to keep a few threads on top; two employees could answer the same
+  customer without knowing about each other; "what we agreed with this
+  customer" had no home; and the assistant, even when trusted, could only
+  answer *instead of* a person, never *for* one to review.
+- **Plain:** the inbox becomes a shared workspace. The server does the
+  filtering, a person can star what matters to them, everyone can see who is
+  on a thread, agreements become a checklist on the contact, and the assistant
+  can draft a reply that a person sends or throws away.
+
+### Decision 1 — Filters live in the URL and the server does the work (shipped)
+
+`GET /v1/conversations` takes `q`, `channel`, `stage`, `only=unanswered`.
+`q` matches the contact's name, phone and email **and any message body** in
+the thread (case-insensitive substring; a correlated `EXISTS`, adequate at our
+scale — a trigram index is the upgrade if it ever shows in a query plan).
+"Unanswered" is computed server-side with the same SQL as the dashboard's
+*Awaiting reply* tile, and its tenant-wide count is returned alongside the
+list so the tab badge and the KPI can never disagree. The inbox reads
+`?tab=&q=&stage=` from the URL, exactly like Contacts, so a view survives a
+reload and thread links keep the filters.
+
+A Next.js layout cannot read the query string, so the layout still renders the
+**unfiltered** first page for instant paint, and the client fetches the
+filtered list itself, re-fetching on a `tick` the live provider bumps on every
+event. Client-side filtering over the newest 100 rows was rejected: it could
+not search text and silently missed anything older than the page.
+
+### Decision 2 — Favorites are personal (pending)
+
+A star is a focus tool for one person, like Gmail's; a shared "important
+customer" is what the contact stage is for. `ConversationStar { userId,
+conversationId }`; starred threads float to the top of every list, newest
+first within the group, plus a *Favorites* tab.
+
+### Decision 3 — Team awareness is a soft warning, never a lock (pending)
+
+Three signals, cheapest first: **who replied last** (already in the data —
+human replies record their author, takeover sets `assignedToUserId`, nothing
+read either until now); **who is viewing** (a 20 s heartbeat from the open
+thread, kept in memory in `LiveService`, broadcast to the tenant's other
+dashboards); **who is typing** (the same heartbeat with a flag, expiring in
+5 s). The other employee sees "Ana is replying to this customer" above the
+composer and a chip on the list row. The composer stays enabled: a hard lock
+fails the moment someone leaves a tab open. Presence is in-process and
+single-instance, consistent with the rest of the live bus (CLAUDE.md), and
+moves to Redis with it.
+
+### Decision 4 — Tasks belong to the contact (pending)
+
+The right panel of a thread is the *contact* panel, and a customer has many
+threads, so the checklist follows the customer like notes do (ADR-023).
+`ContactTask { text, done, doneAt, createdById, conversationId? }`, shown in
+the thread's right panel and on the contact page.
+
+### Decision 5 — The assistant drafts; a person sends (pending)
+
+`POST /v1/conversations/:id/suggest` runs the same brain (persona, facts,
+knowledge retrieval over the thread) with **tools off and nothing persisted**:
+no message row, no events, no contact changes; only usage is counted. The draft
+lands in the composer for editing. A sent reply records whether the draft was
+used as-is or edited — free now, and the raw material for learning from an
+owner's approved replies later. This is the first rung of the ADR-018 trust
+ladder made concrete. One-shot rather than streamed: text arriving inside a
+box you are editing is worse than a two-second wait.
+
+### Consequences
+
+- The topbar's decorative search box is gone; search happens where the list is.
+- Everything here is per tenant and, for stars and presence, per user — every
+  new query is scoped by `tenantId` by hand (no RLS).

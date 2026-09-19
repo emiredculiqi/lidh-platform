@@ -9,7 +9,8 @@ import {
 import { IsIn, IsString, MaxLength, MinLength } from "class-validator";
 import { ConversationsService } from "./conversations.service";
 import {
-  ConversationListItemDto,
+  ConversationListDto,
+  ConversationListQueryDto,
   ThreadDto,
   UnreadSummaryDto,
 } from "./dto/conversation.dto";
@@ -46,17 +47,20 @@ export class ConversationsController {
   @ApiOperation({
     summary: "List a tenant's conversations (inbox)",
     description:
-      "Newest first, max 100. Excludes preview/test threads unless " +
-      "`includePreview=true`. Backs the dashboard inbox.",
+      "Newest first, max 100. Search (q over contact name/phone/email and " +
+      "message text), filter by channel, contact stage and only=unanswered. " +
+      "Excludes preview/test threads unless `includePreview=true`. Also " +
+      "returns the tenant-wide awaiting-reply count. Backs the dashboard inbox.",
   })
   @ApiQuery({ name: "tenantSlug", example: "acme-coffee" })
   @ApiQuery({ name: "includePreview", required: false, example: false })
-  @ApiOkResponse({ type: ConversationListItemDto, isArray: true })
-  list(
-    @Query("tenantSlug") tenantSlug: string,
-    @Query("includePreview") includePreview?: string,
-  ): Promise<ConversationListItemDto[]> {
-    return this.conversations.list(tenantSlug, includePreview === "true");
+  @ApiQuery({ name: "q", required: false })
+  @ApiQuery({ name: "channel", required: false, enum: ["web", "whatsapp", "instagram"] })
+  @ApiQuery({ name: "stage", required: false, enum: ["new", "lead", "client", "not_a_fit"] })
+  @ApiQuery({ name: "only", required: false, enum: ["unanswered"] })
+  @ApiOkResponse({ type: ConversationListDto })
+  list(@Query() query: ConversationListQueryDto): Promise<ConversationListDto> {
+    return this.conversations.list(query);
   }
 
   @Get("unread")

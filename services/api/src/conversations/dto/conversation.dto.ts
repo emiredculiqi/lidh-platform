@@ -1,4 +1,41 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { IsBooleanString, IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { CONTACT_STAGES, type ContactStageValue } from "../../contacts/dto/contact.dto";
+import { LIST_CHANNELS, LIST_ONLY, type ListChannel, type ListOnly } from "../list-query";
+
+/** Query for GET /conversations. Everything optional except the tenant. */
+export class ConversationListQueryDto {
+  @ApiProperty({ example: "acme-coffee" })
+  @IsString()
+  @MinLength(1)
+  tenantSlug!: string;
+
+  @ApiPropertyOptional({ description: "Include preview/test threads.", example: "false" })
+  @IsOptional()
+  @IsBooleanString()
+  includePreview?: string;
+
+  @ApiPropertyOptional({ description: "Search contact name, phone, email and message text (case-insensitive substring)." })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+
+  @ApiPropertyOptional({ enum: LIST_CHANNELS })
+  @IsOptional()
+  @IsIn(LIST_CHANNELS)
+  channel?: ListChannel;
+
+  @ApiPropertyOptional({ enum: CONTACT_STAGES })
+  @IsOptional()
+  @IsIn(CONTACT_STAGES)
+  stage?: ContactStageValue;
+
+  @ApiPropertyOptional({ enum: LIST_ONLY, description: "unanswered = the customer spoke last." })
+  @IsOptional()
+  @IsIn(LIST_ONLY)
+  only?: ListOnly;
+}
 
 export class ConversationListItemDto {
   @ApiProperty({ example: "clx_conv1" }) id!: string;
@@ -33,6 +70,17 @@ export class ConversationListItemDto {
   @ApiProperty({ example: 2, description: "Unread visitor messages" })
   unreadCount!: number;
   @ApiProperty({ example: "2026-05-16T13:00:00.000Z" }) lastMsgAt!: Date;
+}
+
+export class ConversationListDto {
+  @ApiProperty({ type: [ConversationListItemDto] }) items!: ConversationListItemDto[];
+  @ApiProperty({
+    example: 3,
+    description:
+      "Tenant-wide count of open threads where the customer spoke last, " +
+      "regardless of the filters applied to `items`.",
+  })
+  awaitingCount!: number;
 }
 
 export class UnreadItemDto {

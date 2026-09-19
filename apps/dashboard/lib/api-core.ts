@@ -77,6 +77,19 @@ export type ConversationListItem = {
   lastMsgAt: string;
 };
 
+export type ConversationListParams = {
+  q?: string;
+  channel?: "web" | "whatsapp" | "instagram";
+  stage?: ContactStage;
+  only?: "unanswered";
+};
+
+export type ConversationList = {
+  items: ConversationListItem[];
+  // Tenant-wide "customer spoke last" count, independent of the filters.
+  awaitingCount: number;
+};
+
 export type UnreadItem = {
   conversationId: string;
   contactName: string | null;
@@ -385,8 +398,14 @@ export function makeApi(t: Transport) {
       filename: string;
       contentBase64: string;
     }) => t.post<KnowledgeSource>("/knowledge/sources/upload", body),
-    listConversations: (slug: string) =>
-      t.get<ConversationListItem[]>(`/conversations?tenantSlug=${slug}`),
+    listConversations: (slug: string, params: ConversationListParams = {}) => {
+      const qs = new URLSearchParams({ tenantSlug: slug });
+      if (params.q) qs.set("q", params.q);
+      if (params.channel) qs.set("channel", params.channel);
+      if (params.stage) qs.set("stage", params.stage);
+      if (params.only) qs.set("only", params.only);
+      return t.get<ConversationList>(`/conversations?${qs.toString()}`);
+    },
     getThread: (id: string) => t.get<Thread>(`/conversations/${id}`),
     setConversationResponder: (id: string, mode: Responder | "inherit") =>
       t.post<{ aiOverride: Responder | null; aiEffective: Responder }>(

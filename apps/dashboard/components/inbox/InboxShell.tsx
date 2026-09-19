@@ -1,10 +1,18 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import type { ConversationListItem } from "@/lib/api-core";
-import { useLocale } from "@/lib/i18n";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  CONTACT_STAGES,
+  type ContactStage,
+  type ConversationList,
+  type ConversationListItem,
+  type ConversationListParams,
+} from "@/lib/api-core";
+import { api } from "@/lib/api";
+import { useT } from "@/lib/i18n";
+import { useLive } from "@/components/shell/LiveProvider";
 import { ChannelBadge } from "@/components/ui/ChannelBadge";
 import { formatDateTime } from "@/lib/datetime";
 import { contactDisplayName, contactInitials } from "@/lib/contact-name";
@@ -12,51 +20,126 @@ import { contactDisplayName, contactInitials } from "@/lib/contact-name";
 // Filter by where the customer wrote from, plus the one that matters most:
 // who is waiting on us. (The old AI/Human split went with ADR-018 — the inbox
 // is organised around channels and work, not around who answered.)
-type Filter = "all" | "web" | "whatsapp" | "unanswered";
+type Tab = "all" | "web" | "whatsapp" | "unanswered";
 
+/**
+ * Inbox list + filters. Filter state lives in the URL (?tab=&q=&stage=) so a
+ * view survives reloads, the back button works, and thread links keep the
+ * filters. The server does the filtering: the layout hands us the unfiltered
+ * first page; as soon as any filter is set we fetch the filtered list here,
+ * and re-fetch on every live event (the layout's router.refresh can't see
+ * the query string).
+ */
 export function InboxShell({
   slug,
-  conversations,
+  initial,
   children,
 }: {
   slug: string;
-  conversations: ConversationListItem[];
+  initial: ConversationList;
   children: ReactNode;
 }) {
   const pathname = usePathname() || "";
-  const { locale } = useLocale();
-  const al = locale === "al";
+  const router = useRouter();
+  const sp = useSearchParams();
+  const { tick } = useLive();
   const base = `/tenants/${slug}/inbox`;
   const detailOpen = pathname !== base; // a conversation is selected
-  const [filter, setFilter] = useState<Filter>("all");
 
-  const unansweredCount = conversations.filter(
-    (c) => c.lastMessageRole === "user",
-  ).length;
+  const tab = (sp.get("tab") as Tab | null) ?? "all";
+  const q = sp.get("q") ?? "";
+  const stage = (sp.get("stage") as ContactStage | null) ?? null;
+  const filtered = tab !== "all" || Boolean(q) || stage !== null;
+  const qs = sp.toString();
+  const withQuery = (href: string) => (qs ? `${href}?${qs}` : href);
 
-  const tabs: { key: Filter; label: string }[] = [
-    { key: "all", label: al ? "Të gjitha" : "All" },
+  const [text, setText] = useState(q);
+  useEffect(() => setText(q), [q]);
+
+  const [list, setList] = useState<ConversationList>(initial);
+  const [loading, setLoading] = useState(false);
+  // Unfiltered: the layout's server-rendered list is the truth (it refreshes
+  // via router.refresh on live events). Filtered: we fetch.
+  useEffect(() => {
+    if (!filtered) setList(initial);
+  }, [filtered, initial]);
+  useEffect(() => {
+    if (!filtered) return;
+    let cancelled = false;
+    const params: ConversationListParams = {};
+    if (q) params.q = q;
+    if (tab === "web" || tab === "whatsapp") params.channel = tab;
+    if (tab === "unanswered") params.only = "unanswered";
+    if (stage) params.stage = stage;
+    setLoading(true);
+    api
+      .listConversations(slug, params)
+      .then((r) => {
+        if (!cancelled) setList(r);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [slug, filtered, q, tab, stage, tick]);
+
+  const t = useT({
+    al: {
+      all: "Të gjitha",
+      unanswered: "Pa përgjigje",
+      search: "Kërko emër, telefon, email ose mesazh…",
+      allStages: "Çdo status",
+      stages: { new: "I ri", lead: "Potencial", client: "Ekzistues", not_a_fit: "Jo i përshtatshëm" } as Record<ContactStage, string>,
+      empty: "Asnjë bisedë.",
+      noMatch: "Asnjë bisedë nuk përputhet me filtrat.",
+      clear: "Pastro filtrat",
+      anonymous: "Vizitor anonim",
+    },
+    en: {
+      all: "All",
+      unanswered: "Unanswered",
+      search: "Search name, phone, email or message…",
+      allStages: "Any stage",
+      stages: { new: "New", lead: "Lead", client: "Client", not_a_fit: "Not a fit" } as Record<ContactStage, string>,
+      empty: "No conversations.",
+      noMatch: "No conversations match these filters.",
+      clear: "Clear filters",
+      anonymous: "Anonymous visitor",
+    },
+  });
+
+  function apply(patch: Record<string, string | null>) {
+    const next = new URLSearchParams(sp.toString());
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === null || v === "") next.delete(k);
+      else next.set(k, v);
+    }
+    const s = next.toString();
+    router.replace(s ? `${pathname}?${s}` : pathname, { scroll: false });
+  }
+
+  // Debounce the search box so we don't re-query on every keystroke.
+  useEffect(() => {
+    if (text === q) return;
+    const id = setTimeout(() => apply({ q: text.trim() || null }), 300);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "all", label: t.all },
     { key: "web", label: "Web" },
     { key: "whatsapp", label: "WhatsApp" },
     {
       key: "unanswered",
-      label: (al ? "Pa përgjigje" : "Unanswered") +
-        (unansweredCount ? ` · ${unansweredCount}` : ""),
+      label: t.unanswered + (list.awaitingCount ? ` · ${list.awaitingCount}` : ""),
     },
   ];
 
-  const shown = conversations.filter((c) => {
-    switch (filter) {
-      case "web":
-        return c.channelKind === "web";
-      case "whatsapp":
-        return c.channelKind === "whatsapp";
-      case "unanswered":
-        return c.lastMessageRole === "user";
-      default:
-        return true;
-    }
-  });
+  const shown: ConversationListItem[] = list.items;
 
   return (
     <div className="flex h-[calc(100vh-118px)] overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -66,26 +149,69 @@ export function InboxShell({
           detailOpen ? "hidden lg:flex" : "flex"
         } w-full flex-col border-slate-200 lg:w-[340px] lg:border-r`}
       >
-        <div className="flex flex-none items-center gap-1.5 border-b border-slate-200 px-3 py-2.5">
-          {tabs.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setFilter(t.key)}
-              className={`rounded-full px-3 py-1 text-[12.5px] font-semibold transition ${
-                filter === t.key
-                  ? "bg-brand-blue text-white"
-                  : "text-slate-500 hover:bg-slate-100"
+        <div className="flex-none space-y-2 border-b border-slate-200 px-3 py-2.5">
+          <input
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={t.search}
+            aria-label={t.search}
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[13px] text-brand-ink outline-none focus:border-brand-blue focus:bg-white"
+          />
+          <div className="flex items-center gap-1.5">
+            {tabs.map((x) => (
+              <button
+                key={x.key}
+                type="button"
+                onClick={() => apply({ tab: x.key === "all" ? null : x.key })}
+                className={`rounded-full px-2.5 py-1 text-[12px] font-semibold transition ${
+                  tab === x.key
+                    ? "bg-brand-blue text-white"
+                    : "text-slate-500 hover:bg-slate-100"
+                }`}
+              >
+                {x.label}
+              </button>
+            ))}
+            <select
+              value={stage ?? ""}
+              onChange={(e) => apply({ stage: e.target.value || null })}
+              aria-label={t.allStages}
+              className={`ml-auto max-w-[120px] rounded-full border px-2 py-1 text-[12px] font-semibold outline-none ${
+                stage
+                  ? "border-brand-blue bg-brand-blue/5 text-brand-blue"
+                  : "border-slate-200 bg-white text-slate-500"
               }`}
             >
-              {t.label}
-            </button>
-          ))}
+              <option value="">{t.allStages}</option>
+              {CONTACT_STAGES.map((s) => (
+                <option key={s} value={s}>
+                  {t.stages[s]}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div
+          className={`min-h-0 flex-1 overflow-y-auto transition-opacity ${
+            loading ? "opacity-60" : ""
+          }`}
+        >
           {shown.length === 0 ? (
-            <p className="px-4 py-12 text-center text-sm text-slate-400">
-              {al ? "Asnjë bisedë." : "No conversations."}
-            </p>
+            <div className="px-4 py-12 text-center text-sm text-slate-400">
+              <p>{filtered ? t.noMatch : t.empty}</p>
+              {filtered ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setText("");
+                    router.replace(pathname, { scroll: false });
+                  }}
+                  className="mt-2 text-[12.5px] font-semibold text-brand-blue hover:underline"
+                >
+                  {t.clear}
+                </button>
+              ) : null}
+            </div>
           ) : (
             shown.map((c) => {
               const active = pathname === `${base}/${c.id}`;
@@ -95,7 +221,7 @@ export function InboxShell({
               return (
                 <Link
                   key={c.id}
-                  href={`${base}/${c.id}`}
+                  href={withQuery(`${base}/${c.id}`)}
                   className={`relative flex gap-3 border-b border-slate-100 px-4 py-3 transition ${
                     active ? "bg-brand-blue/5" : "hover:bg-slate-50"
                   }`}
@@ -117,7 +243,7 @@ export function InboxShell({
                           name: c.contactName,
                           phone: c.contactPhone,
                           email: c.contactEmail,
-                        }) ?? (al ? "Vizitor anonim" : "Anonymous visitor")}
+                        }) ?? t.anonymous}
                       </span>
                       <span
                         className={`flex-none text-[11px] ${

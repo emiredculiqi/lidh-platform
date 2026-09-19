@@ -15,10 +15,12 @@ import {
   type Responder,
 } from "../tenants/responder";
 import type {
-  ConversationListItemDto,
+  ConversationListDto,
+  ConversationListQueryDto,
   ThreadDto,
   UnreadSummaryDto,
 } from "./dto/conversation.dto";
+import { conversationListWhere } from "./list-query";
 
 /** Read-side for the dashboard inbox. Returns own DTO shapes (no Prisma
  *  type leak → portable .d.ts, no TS2742). */
@@ -126,23 +128,33 @@ export class ConversationsService {
     return { ok: true };
   }
 
-  async list(
-    tenantSlug: string,
-    includePreview = false,
-  ): Promise<ConversationListItemDto[]> {
+  async list(query: ConversationListQueryDto): Promise<ConversationListDto> {
     const db = this.prisma.client;
-    const tenant = await db.tenant.findUnique({ where: { slug: tenantSlug } });
+    const tenant = await db.tenant.findUnique({
+      where: { slug: query.tenantSlug },
+    });
     if (!tenant) throw new NotFoundException("tenant_not_found");
     assertCanAccessTenant(this.ctx.get(), tenant.id);
 
+    // "Who is waiting on us" is computed once, tenant-wide: it feeds the
+    // Unanswered tab's count AND (when that tab is active) the filter itself,
+    // so the badge and the list can never disagree.
+    const awaitingIds = await this.awaitingIds(tenant.id);
+    const where = conversationListWhere(
+      tenant.id,
+      {
+        q: query.q,
+        channel: query.channel,
+        stage: query.stage,
+        only: query.only,
+        includePreview: query.includePreview === "true",
+      },
+      awaitingIds,
+    );
+
     const [rows, unread] = await Promise.all([
       db.conversation.findMany({
-        where: {
-          tenantId: tenant.id,
-          ...(includePreview ? {} : { kind: "customer" }),
-          // Web intake gate (ADR-021): invisible until name + email given.
-          intakePending: false,
-        },
+        where,
         orderBy: { lastMsgAt: "desc" },
         take: 100,
         include: {
@@ -163,7 +175,7 @@ export class ConversationsService {
 
     const responderSettings = readResponderSettings(tenant.settings);
     const now = new Date();
-    return rows.map((c) => ({
+    const items = rows.map((c) => ({
       id: c.id,
       channelKind: c.channel.kind,
       status: c.status,
@@ -185,6 +197,28 @@ export class ConversationsService {
       unreadCount: unread.get(c.id) ?? 0,
       lastMsgAt: c.lastMsgAt,
     }));
+    return { items, awaitingCount: awaitingIds.length };
+  }
+
+  /** Open customer threads whose LATEST message is the customer's — the same
+   *  definition as the dashboard's "Awaiting reply" tile (usage.service). */
+  private async awaitingIds(tenantId: string): Promise<string[]> {
+    const rows = await this.prisma.client.$queryRaw<{ id: string }[]>`
+      SELECT c.id
+        FROM "Conversation" c
+       WHERE c."tenantId" = ${tenantId}
+         AND c.kind = 'customer'
+         AND c."intakePending" = false
+         AND c.status = 'open'
+         AND (
+           SELECT m.role::text
+             FROM "Message" m
+            WHERE m."conversationId" = c.id
+            ORDER BY m."createdAt" DESC
+            LIMIT 1
+         ) = 'user'
+    `;
+    return rows.map((r) => r.id);
   }
 
   /** Per-conversation count of unread VISITOR messages (role=user newer than

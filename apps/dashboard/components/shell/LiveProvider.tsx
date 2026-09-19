@@ -27,6 +27,9 @@ type LiveContextValue = {
   markNotificationsSeen: () => void;
   /** Re-fetch unread + notifications (e.g. after marking a thread read). */
   refresh: () => void;
+  /** Increments (debounced) on every live event. Client-fetched views that
+   *  router.refresh() can't reach — the filtered inbox list — re-fetch on it. */
+  tick: number;
 };
 
 const LiveContext = createContext<LiveContextValue>({
@@ -35,6 +38,7 @@ const LiveContext = createContext<LiveContextValue>({
   unseenCount: 0,
   markNotificationsSeen: () => {},
   refresh: () => {},
+  tick: 0,
 });
 export const useLive = () => useContext(LiveContext);
 
@@ -68,6 +72,7 @@ export function LiveProvider({
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [lastSeen, setLastSeen] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
 
   // Load the "seen" marker once (client-only; survives reloads per browser).
   useEffect(() => {
@@ -119,6 +124,7 @@ export function LiveProvider({
     refreshTimer.current = setTimeout(() => {
       refresh();
       router.refresh();
+      setTick((n) => n + 1);
     }, 450);
   };
 
@@ -188,6 +194,7 @@ export function LiveProvider({
         unseenCount,
         markNotificationsSeen,
         refresh,
+        tick,
       }}
     >
       {children}
