@@ -47,7 +47,7 @@ export class ContactListItemDto {
   @ApiProperty({ nullable: true, type: String }) email!: string | null;
   @ApiProperty({ nullable: true, type: String }) source!: string | null;
   @ApiProperty() conversationCount!: number;
-  @ApiProperty() leadCount!: number;
+  @ApiProperty() noteCount!: number;
   @ApiProperty() lastSeenAt!: Date;
 }
 
@@ -61,11 +61,25 @@ export class ContactConversationDto {
   @ApiProperty() lastMsgAt!: Date;
 }
 
-export class ContactLeadDto {
+export const CONTACT_NOTE_KINDS = ["intent", "manual"] as const;
+
+export class ContactNoteDto {
   @ApiProperty() id!: string;
-  @ApiProperty() status!: string;
-  @ApiProperty({ type: Object }) payload!: Record<string, unknown>;
-  @ApiProperty() capturedAt!: Date;
+  @ApiProperty({ enum: CONTACT_NOTE_KINDS, description: "intent = written by the assistant when it detected interest; manual = typed by the team." })
+  kind!: string;
+  @ApiProperty() body!: string;
+  @ApiProperty({ nullable: true, type: String }) conversationId!: string | null;
+  @ApiProperty({ nullable: true, type: String, description: "Team member's name for manual notes." })
+  authorName!: string | null;
+  @ApiProperty() createdAt!: Date;
+}
+
+export class AddContactNoteDto {
+  @ApiProperty({ example: "Called back — prefers mornings." })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(2000)
+  body!: string;
 }
 
 export class ContactDetailDto {
@@ -80,5 +94,5 @@ export class ContactDetailDto {
   @ApiProperty() lastSeenAt!: Date;
   @ApiProperty({ type: [ContactConversationDto] })
   conversations!: ContactConversationDto[];
-  @ApiProperty({ type: [ContactLeadDto] }) leads!: ContactLeadDto[];
+  @ApiProperty({ type: [ContactNoteDto] }) notes!: ContactNoteDto[];
 }

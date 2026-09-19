@@ -44,8 +44,8 @@ export default async function DashboardPage({
         />
         <KpiStat
           label={<T al="Kontakte të reja" en="New contacts" />}
-          value={(usage?.leads ?? 0).toLocaleString()}
-          sub={<T al="kapur automatikisht" en="captured automatically" />}
+          value={(usage?.newContacts ?? 0).toLocaleString()}
+          sub={<T al="parë për herë të parë këtë muaj" en="first seen this month" />}
         />
         <KpiStat
           label={<T al="Në pritje të përgjigjes" en="Awaiting reply" />}

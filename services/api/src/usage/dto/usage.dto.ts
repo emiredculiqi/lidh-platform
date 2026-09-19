@@ -14,8 +14,8 @@ export class UsageDto {
   @ApiProperty({ description: "Replies from the agent this month." })
   messagesOut!: number;
 
-  @ApiProperty({ description: "Leads captured this month." })
-  leads!: number;
+  @ApiProperty({ description: "Contacts with an identity (name/phone/email) first seen this month." })
+  newContacts!: number;
 
   @ApiProperty({ description: "Human-handoff requests this month." })
   handoffs!: number;

@@ -79,8 +79,8 @@ export default async function ContactsPage({
               <div className="hidden flex-none text-right sm:block">
                 <div className="text-[12.5px] font-medium text-slate-600">
                   {c.conversationCount}{" "}
-                  <T al="biseda" en="convos" /> · {c.leadCount}{" "}
-                  <T al="lead" en="leads" />
+                  <T al="biseda" en="convos" /> · {c.noteCount}{" "}
+                  <T al="shënime" en="notes" />
                 </div>
                 <div className="text-[11px] text-slate-400">
                   {formatDateTime(c.lastSeenAt)}

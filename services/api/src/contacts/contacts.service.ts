@@ -6,13 +6,14 @@ import type {
   ContactDetailDto,
   ContactListItemDto,
   ContactListQueryDto,
+  ContactNoteDto,
   ContactStageValue,
 } from "./dto/contact.dto";
 
 const preview = (s: string | null | undefined): string =>
   (s ?? "").replace(/\s+/g, " ").slice(0, 120);
 
-/** Read-side for the dashboard Contacts section + the inbox/leads detail. */
+/** Read-side for the dashboard Contacts section + the inbox/contact detail, plus stage and notes writes. */
 @Injectable()
 export class ContactsService {
   constructor(
@@ -69,7 +70,7 @@ export class ContactsService {
         email: true,
         source: true,
         lastSeenAt: true,
-        _count: { select: { conversations: true, leads: true } },
+        _count: { select: { conversations: true, notes: true } },
       },
     });
 
@@ -81,7 +82,7 @@ export class ContactsService {
       email: c.email,
       source: c.source,
       conversationCount: c._count.conversations,
-      leadCount: c._count.leads,
+      noteCount: c._count.notes,
       lastSeenAt: c.lastSeenAt,
     }));
     if ((query.sort ?? "name") === "name") {
@@ -111,7 +112,11 @@ export class ContactsService {
             _count: { select: { messages: true } },
           },
         },
-        leads: { orderBy: { capturedAt: "desc" }, take: 50 },
+        notes: {
+          orderBy: { createdAt: "desc" },
+          take: 100,
+          include: { author: { select: { name: true, email: true } } },
+        },
       },
     });
     if (!c) throw new NotFoundException("contact_not_found");
@@ -136,12 +141,40 @@ export class ContactsService {
         messageCount: cv._count.messages,
         lastMsgAt: cv.lastMsgAt,
       })),
-      leads: c.leads.map((l) => ({
-        id: l.id,
-        status: l.status,
-        payload: (l.payload ?? {}) as Record<string, unknown>,
-        capturedAt: l.capturedAt,
+      notes: c.notes.map((n) => ({
+        id: n.id,
+        kind: n.kind,
+        body: n.body,
+        conversationId: n.conversationId,
+        authorName: n.author?.name ?? n.author?.email ?? null,
+        createdAt: n.createdAt,
       })),
+    };
+  }
+
+  /** A team member writes a note on a contact (ADR-023). */
+  async addNote(id: string, body: string): Promise<ContactNoteDto> {
+    const db = this.prisma.client;
+    const c = await db.contact.findUnique({ where: { id }, select: { tenantId: true } });
+    if (!c) throw new NotFoundException("contact_not_found");
+    assertCanAccessTenant(this.ctx.get(), c.tenantId);
+    const n = await db.contactNote.create({
+      data: {
+        tenantId: c.tenantId,
+        contactId: id,
+        kind: "manual",
+        body: body.trim(),
+        authorUserId: this.ctx.get().userId ?? null,
+      },
+      include: { author: { select: { name: true, email: true } } },
+    });
+    return {
+      id: n.id,
+      kind: n.kind,
+      body: n.body,
+      conversationId: n.conversationId,
+      authorName: n.author?.name ?? n.author?.email ?? null,
+      createdAt: n.createdAt,
     };
   }
 

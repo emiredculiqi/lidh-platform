@@ -11,7 +11,6 @@ const TITLES: { match: (s: string) => boolean; al: [string, string]; en: [string
   { match: (s) => s.startsWith("/inbox"), al: ["Bisedat", "Të gjitha bisedat nga çdo kanal"], en: ["Conversations", "All conversations across every channel"] },
   { match: (s) => s.startsWith("/contacts"), al: ["Kontakte", "Të gjithë kontaktet e biznesit tënd"], en: ["Contacts", "All your business contacts"] },
   { match: (s) => s.startsWith("/calendar"), al: ["Kalendari", "Takime dhe rezervime të kapura automatikisht"], en: ["Calendar", "Appointments & bookings captured automatically"] },
-  { match: (s) => s.startsWith("/leads"), al: ["Klientë potencialë", "Kontaktet e kapura nga asistenti"], en: ["Leads", "Contacts captured by the assistant"] },
   { match: (s) => s.startsWith("/settings") || s.startsWith("/developer"), al: ["Cilësimet", "Kush përgjigjet, kanalet, widget-i dhe faqja"], en: ["Settings", "Who answers, channels, widget and page"] },
   { match: (s) => s.startsWith("/team"), al: ["Ekipi", "Anëtarët e ekipit dhe ftesat"], en: ["Team", "Team members and invitations"] },
   { match: (s) => s.startsWith("/usage"), al: ["Përdorimi", "Sa po përdoret asistenti këtë muaj"], en: ["Usage", "How much the assistant is used this month"] },

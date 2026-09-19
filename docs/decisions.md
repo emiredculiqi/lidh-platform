@@ -1132,3 +1132,56 @@ and survive regardless.
 - The `real_estate` preset can now be deleted once no business matches it.
 - Usage is computed on demand across all non-archived tenants; fine at the
   current scale, and it only runs on an admin click.
+
+## ADR-023 — Retire the Lead module; interest becomes a stage and a note on the contact
+
+**Status:** Accepted · 2026-09-19.
+
+- **Context:** A `Lead` row was created whenever the assistant's `capture_lead`
+  tool fired: the captured fields, a note, and its own status ladder
+  (`new → contacted → won → lost`). After the customer stage landed on
+  `Contact` (`new → lead → client → not a fit`, set by a person), the product
+  carried **two "lead" concepts with two status machines**, one set by the
+  assistant and one by the team, and owners could not tell a lead from a
+  contact from a conversation. The one thing of lasting value in a Lead row
+  was its `notes` — the assistant's one-line summary of what the person wanted.
+- **Technical term:** *collapsing an AI-produced entity into attributes of the
+  human-owned entity (stage + notes on Contact), with a data-carrying migration.*
+- **Plain:** A lead is a contact the team has marked as one. The assistant may
+  suggest it — by moving a brand-new contact to *Lead* and writing down what
+  they asked for — but there is no separate list to keep in sync.
+
+### Decision 1 — `capture_lead` now enriches the contact
+
+On intent: fill in name/email/phone (as before), move `Contact.stage` from
+`new` to `lead` — never downgrading a `client` or a `not_a_fit` — append an
+**intent note**, and notify by bell and email exactly as before. The tool
+keeps its name; renaming it would change what the model has learned to call.
+
+### Decision 2 — Notes are a history, and the team can write them too
+
+`ContactNote { kind: intent | manual, body, conversationId?, authorUserId? }`.
+Intent notes come from the assistant (both runtimes); manual notes come from a
+box on the contact page (`POST /v1/contacts/:id/notes`). One timeline, newest
+first. "Latest only" was considered and rejected: the marginal cost of a table
+over a column is small, and *"called back, prefers mornings"* had no home.
+
+### Decision 3 — Migrate, then drop
+
+One release-time migration creates `ContactNote`, copies every `Lead` onto its
+contact as an intent note (the note body, else the captured fields, else
+"Interest detected"), moves those contacts `new → lead`, then drops `Lead` and
+`LeadStatus`. Leads whose contact had already been deleted carry no identity
+and go with the table.
+
+### Consequences
+
+- The Leads page, sidebar item, API module and types are gone. "Show me my
+  leads" is the Contacts page filtered by stage = Lead.
+- The dashboard's "New contacts" tile and the usage page count contacts with an
+  identity first seen this month, not lead rows.
+- The bell keeps the `lead_captured` event kind (renaming an enum value is
+  churn) but labels it **"Interest detected" / "Interes i zbuluar"**; the email
+  now links to the contact, not to a dead page.
+- ADR-004's knowing duplication shows again: `recordIntent` exists in both
+  `chat.service` and `whatsapp.service`, kept in step by hand.

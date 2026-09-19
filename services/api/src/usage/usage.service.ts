@@ -34,7 +34,7 @@ export class UsageService {
       conversations,
       messagesIn,
       messagesOut,
-      leads,
+      newContacts,
       handoffs,
       tokenAgg,
       awaitingReply,
@@ -64,8 +64,17 @@ export class UsageService {
           conversation: customer,
         },
       }),
-      db.lead.count({
-        where: { tenantId, capturedAt: { gte: monthStart } },
+      db.contact.count({
+        where: {
+          tenantId,
+          firstSeenAt: { gte: monthStart },
+          // Someone we can actually reach — not a gated web placeholder.
+          OR: [
+            { name: { not: null } },
+            { phone: { not: null } },
+            { email: { not: null } },
+          ],
+        },
       }),
       db.event.count({
         where: {
@@ -92,7 +101,7 @@ export class UsageService {
       conversations,
       messagesIn,
       messagesOut,
-      leads,
+      newContacts,
       handoffs,
       tokensIn: tokenAgg._sum.tokensIn ?? 0,
       tokensOut: tokenAgg._sum.tokensOut ?? 0,

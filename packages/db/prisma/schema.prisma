@@ -77,11 +77,12 @@ enum MessageRole {
   tool
 }
 
-enum LeadStatus {
-  new_      @map("new") // `new` is a JS reserved word; identifier is `new_`, DB value is "new"
-  contacted
-  won
-  lost
+// Notes on a contact (ADR-023). `intent` = written by the assistant when it
+// detects buying interest (replaces the old Lead row); `manual` = typed by a
+// team member on the contact page.
+enum ContactNoteKind {
+  intent
+  manual
 }
 
 enum EventKind {
@@ -182,6 +183,7 @@ model User {
   memberships           Membership[]
   sentInvitations       Invitation[]   @relation("InvitationInviter")
   assignedConversations Conversation[] @relation("ConversationAssignee")
+  contactNotes          ContactNote[]  @relation("ContactNoteAuthor")
 
   @@index([clerkId])
 }
@@ -257,7 +259,7 @@ model Tenant {
   contacts         Contact[]
   conversations    Conversation[]
   messages         Message[]
-  leads            Lead[]
+  contactNotes     ContactNote[]
   events           Event[]
   usageDaily       UsageDaily[]
 
@@ -490,7 +492,7 @@ model Contact {
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   conversations Conversation[]
-  leads         Lead[]
+  notes         ContactNote[]
 
   // Cross-channel unification: same phone/email per tenant collapses to one contact
   @@unique([tenantId, phone])
@@ -539,7 +541,7 @@ model Conversation {
   contact    Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
   assignedTo User?     @relation("ConversationAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   messages   Message[]
-  leads      Lead[]
+  notes      ContactNote[]
   events     Event[]
 
   @@index([tenantId, lastMsgAt])
@@ -582,21 +584,24 @@ model Message {
 // Leads (captured by the agent or manually)
 // ─────────────────────────────────────────────────────────────────────────────
 
-model Lead {
-  id             String     @id @default(cuid())
+model ContactNote {
+  id             String          @id @default(cuid())
   tenantId       String
-  conversationId String?
-  contactId      String?
-  payload        Json       @default("{}") // { name, email, phone, message, ... }
-  status         LeadStatus @default(new_)
-  capturedAt     DateTime   @default(now())
+  contactId      String
+  conversationId String? // where the note came from, when it came from a chat
+  kind           ContactNoteKind
+  body           String          @db.Text
+  // Team member who wrote a manual note; null for the assistant's intent notes.
+  authorUserId   String?
+  createdAt      DateTime        @default(now())
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact      Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
   conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  contact      Contact?      @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  author       User?         @relation("ContactNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
 
-  @@index([tenantId, capturedAt])
-  @@index([tenantId, status])
+  @@index([contactId, createdAt])
+  @@index([tenantId, createdAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

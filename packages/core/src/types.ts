@@ -76,6 +76,6 @@ export type AgentEvent =
 export interface AgentDeps {
   /** Anthropic API key (injected by the shell from its env/secrets). */
   anthropicApiKey: string;
-  /** Performs a tool call (writes Lead/Event rows, etc.). */
+  /** Performs a tool call (writes contact notes, events, etc.). */
   executeTool: ExecuteTool;
 }

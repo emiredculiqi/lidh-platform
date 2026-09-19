@@ -32,9 +32,10 @@ export type {
   KnowledgeSource,
   KnowledgeChunk,
   Contact,
+  ContactNote,
+  ContactNoteKind,
   Conversation,
   Message,
-  Lead,
   Event,
   UsageDaily,
   Prisma,
@@ -54,6 +55,5 @@ export {
   ConversationStatus,
   ConversationKind,
   MessageRole,
-  LeadStatus,
   EventKind,
 } from "@prisma/client";

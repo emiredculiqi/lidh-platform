@@ -7,6 +7,7 @@ import { ChannelBadge } from "@/components/ui/ChannelBadge";
 import { StagePill } from "@/components/contacts/Stage";
 import { formatDateTime } from "@/lib/datetime";
 import { StageSelect } from "@/components/contacts/Stage";
+import { ContactNotes } from "@/components/contacts/ContactNotes";
 
 export const dynamic = "force-dynamic";
 
@@ -18,10 +19,6 @@ const LANG: Record<string, string> = {
   fr: "Français",
 };
 
-function field(p: Record<string, unknown>, k: string): string {
-  const v = p?.[k];
-  return typeof v === "string" && v.trim() ? v : "";
-}
 
 function Info({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (
@@ -129,37 +126,7 @@ export default async function ContactDetailPage({
             )}
           </Card>
 
-          {c.leads.length > 0 ? (
-            <Card padded={false}>
-              <div className="border-b border-slate-200 px-5 py-4">
-                <h3 className="text-[15px] font-bold text-brand-deep">
-                  <T al="Si klient potencial" en="As a lead" /> ({c.leads.length})
-                </h3>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {c.leads.map((l) => {
-                  const p = (l.payload ?? {}) as Record<string, unknown>;
-                  return (
-                    <div key={l.id} className="px-5 py-3.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[12px] font-semibold uppercase text-brand-blue">
-                          {l.status === "new_" ? "new" : l.status}
-                        </span>
-                        <span className="text-[11px] text-slate-400">
-                          {formatDateTime(l.capturedAt)}
-                        </span>
-                      </div>
-                      {field(p, "notes") ? (
-                        <p className="mt-1 text-[13px] text-slate-600">
-                          {field(p, "notes")}
-                        </p>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            </Card>
-          ) : null}
+          <ContactNotes contactId={c.id} notes={c.notes} />
         </div>
       </div>
     </div>

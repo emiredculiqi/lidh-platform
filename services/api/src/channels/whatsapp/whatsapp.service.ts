@@ -671,34 +671,12 @@ export class WhatsappService {
         !!found.email && lower(found.email) !== lower(contact?.email);
       if (!addsPhone && !addsEmail) return;
 
-      if (found.name || found.email) {
-        await db.contact.update({
-          where: { id: contactId },
-          data: {
-            name: found.name ?? undefined,
-            email: found.email ?? undefined,
-            lastSeenAt: new Date(),
-          },
-        });
-      }
-      await db.lead.create({
-        data: {
-          tenantId,
-          conversationId,
-          contactId,
-          status: "new_",
-          payload: {
-            name: found.name,
-            email: found.email,
-            phone: found.phone,
-            notes: "Captured automatically during human take-over",
-          },
-        },
+      await this.recordIntent(tenantId, conversationId, contactId, {
+        name: found.name,
+        email: found.email,
+        notes: "Captured automatically during human take-over",
       });
-      await db.event.create({
-        data: { tenantId, conversationId, kind: "lead_captured" },
-      });
-      this.logger.log(`take-over capture: lead saved for ${conversationId}`);
+      this.logger.log(`take-over capture: intent saved for ${conversationId}`);
     } catch (e) {
       this.logger.error(
         `take-over capture failed: ${e instanceof Error ? e.message : "unknown"}`,
@@ -888,6 +866,51 @@ export class WhatsappService {
     }
   }
 
+  /**
+   * The assistant detected buying interest (ADR-023) — WhatsApp twin of
+   * ChatService.recordIntent (ADR-004 keeps the two orchestrations separate).
+   * The phone is already the contact's identity here, so only name/email are
+   * filled in. Stage moves New → Lead; the summary becomes an intent note.
+   * No email notification on this path (matches the previous behaviour).
+   */
+  private async recordIntent(
+    tenantId: string,
+    conversationId: string,
+    contactId: string,
+    fields: { name?: string; email?: string; notes?: string },
+  ): Promise<void> {
+    const db = this.prisma.client;
+    const before = await db.contact.findUnique({
+      where: { id: contactId },
+      select: { stage: true },
+    });
+    await db.contact.update({
+      where: { id: contactId },
+      data: {
+        name: fields.name ?? undefined,
+        email: fields.email ?? undefined,
+        lastSeenAt: new Date(),
+        ...(before?.stage === "new" ? { stage: "lead" } : {}),
+      },
+    });
+    await db.contactNote.create({
+      data: {
+        tenantId,
+        contactId,
+        conversationId,
+        kind: "intent",
+        body:
+          fields.notes?.trim() ||
+          [fields.name, fields.email].filter(Boolean).join(" · ") ||
+          "Interest detected",
+      },
+    });
+    await db.event.create({
+      data: { tenantId, conversationId, kind: "lead_captured" },
+    });
+    this.live.publish(tenantId, { type: "lead_captured", conversationId });
+  }
+
   private makeToolExecutor(
     tenantId: string,
     conversationId: string,
@@ -901,31 +924,14 @@ export class WhatsappService {
             string,
             string | undefined
           >;
-          if (name || email) {
-            await db.contact.update({
-              where: { id: contactId },
-              data: {
-                name: name ?? undefined,
-                email: email ?? undefined,
-                lastSeenAt: new Date(),
-              },
-            });
-          }
-          await db.lead.create({
-            data: {
-              tenantId,
-              conversationId,
-              contactId,
-              status: "new_",
-              payload: { name, email, phone, notes },
-            },
-          });
-          await db.event.create({
-            data: { tenantId, conversationId, kind: "lead_captured" },
+          await this.recordIntent(tenantId, conversationId, contactId, {
+            name,
+            email,
+            notes,
           });
           return {
             result:
-              "Lead saved. Thank the customer and let them know someone will follow up.",
+              "Saved. Thank the customer and let them know someone will follow up.",
             effect: { type: "lead_captured" },
           };
         }

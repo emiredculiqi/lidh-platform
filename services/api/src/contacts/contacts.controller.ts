@@ -2,9 +2,11 @@ import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { ContactsService } from "./contacts.service";
 import {
+  AddContactNoteDto,
   ContactDetailDto,
   ContactListItemDto,
   ContactListQueryDto,
+  ContactNoteDto,
   SetContactStageDto,
 } from "./dto/contact.dto";
 
@@ -38,6 +40,16 @@ export class ContactsController {
   @ApiOkResponse({ type: ContactDetailDto })
   get(@Param("id") id: string): Promise<ContactDetailDto> {
     return this.contacts.get(id);
+  }
+
+  @Post(":id/notes")
+  @ApiOperation({
+    summary: "Add a manual note to a contact",
+    description: "Free text by a team member; appears in the contact's notes timeline next to the assistant's intent notes (ADR-023).",
+  })
+  @ApiOkResponse({ type: ContactNoteDto })
+  addNote(@Param("id") id: string, @Body() dto: AddContactNoteDto): Promise<ContactNoteDto> {
+    return this.contacts.addNote(id, dto.body);
   }
 
   @Post(":id/stage")

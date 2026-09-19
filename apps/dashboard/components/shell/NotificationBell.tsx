@@ -14,7 +14,7 @@ function label(n: Notification, al: boolean): string {
     case "contact_registered":
       return (al ? "Kontakt i ri" : "New contact") + who;
     case "lead_captured":
-      return (al ? "Lead i ri" : "New lead") + who;
+      return (al ? "Interes i zbuluar" : "Interest detected") + who;
     default:
       return al ? "Aktivitet" : "Activity";
   }

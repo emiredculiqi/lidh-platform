@@ -171,7 +171,7 @@ export type ContactListItem = {
   email: string | null;
   source: string | null;
   conversationCount: number;
-  leadCount: number;
+  noteCount: number;
   lastSeenAt: string;
 };
 
@@ -185,11 +185,14 @@ export type ContactConversation = {
   lastMsgAt: string;
 };
 
-export type ContactLead = {
+export type ContactNote = {
   id: string;
-  status: string;
-  payload: Record<string, unknown>;
-  capturedAt: string;
+  // intent = written by the assistant when it detected interest; manual = by the team.
+  kind: "intent" | "manual";
+  body: string;
+  conversationId: string | null;
+  authorName: string | null;
+  createdAt: string;
 };
 
 export type ContactDetail = {
@@ -203,7 +206,7 @@ export type ContactDetail = {
   firstSeenAt: string;
   lastSeenAt: string;
   conversations: ContactConversation[];
-  leads: ContactLead[];
+  notes: ContactNote[];
 };
 
 export type Agent = {
@@ -237,23 +240,14 @@ export type PersonaPresetInput = {
   personas: Record<string, string>;
 };
 
-export type Lead = {
-  id: string;
-  status: string;
-  payload: Record<string, unknown>;
-  contactName: string | null;
-  contactPhone: string | null;
-  contactId: string | null;
-  conversationId: string | null;
-  capturedAt: string;
-};
 
 export type Usage = {
   monthStart: string;
   conversations: number;
   messagesIn: number;
   messagesOut: number;
-  leads: number;
+  // Contacts with an identity first seen this month.
+  newContacts: number;
   handoffs: number;
   tokensIn: number;
   tokensOut: number;
@@ -424,7 +418,6 @@ export function makeApi(t: Transport) {
       t.post<{ ok: true }>(`/tenants/${slug}/team/invitations/${id}/resend`, {}),
     revokeInvite: (slug: string, id: string) =>
       t.del<{ ok: true }>(`/tenants/${slug}/team/invitations/${id}`),
-    listLeads: (slug: string) => t.get<Lead[]>(`/leads?tenantSlug=${slug}`),
     listContacts: (slug: string, params: ContactListParams = {}) => {
       const qs = new URLSearchParams({ tenantSlug: slug });
       if (params.q) qs.set("q", params.q);
@@ -434,6 +427,8 @@ export function makeApi(t: Transport) {
       return t.get<ContactListItem[]>(`/contacts?${qs.toString()}`);
     },
     getContact: (id: string) => t.get<ContactDetail>(`/contacts/${id}`),
+    addContactNote: (id: string, body: string) =>
+      t.post<ContactNote>(`/contacts/${id}/notes`, { body }),
     setContactStage: (id: string, stage: ContactStage) =>
       t.post<{ stage: ContactStage }>(`/contacts/${id}/stage`, { stage }),
     getUsage: (slug: string) => t.get<Usage>(`/usage?tenantSlug=${slug}`),

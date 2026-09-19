@@ -28,8 +28,9 @@ export default async function UsagePage({
         value: u.messagesOut,
       },
       {
-        label: <T al="Klientë potencialë" en="Leads" />,
-        value: u.leads,
+        label: <T al="Kontakte të reja" en="New contacts" />,
+        value: u.newContacts,
+        hint: <T al="parë për herë të parë këtë muaj" en="first seen this month" />,
       },
       {
         label: <T al="Deligim Bisede tek Stafi" en="Handoffs to staff" />,

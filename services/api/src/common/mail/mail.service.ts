@@ -35,9 +35,10 @@ export class MailService {
     return this.apiKey.length > 0;
   }
 
-  /** Email the business when their agent captures a lead. */
+  /** Email the business when the assistant detects buying interest (ADR-023). */
   async notifyLead(
     tenantId: string,
+    contactId: string,
     lead: { name?: string; email?: string; phone?: string; notes?: string },
     transcript?: string,
   ): Promise<void> {
@@ -56,17 +57,17 @@ export class MailService {
       )
       .join("");
 
-    const leadsUrl = `${this.dashboardUrl}/tenants/${r.slug}/leads`;
+    const leadsUrl = `${this.dashboardUrl}/tenants/${r.slug}/contacts/${contactId}`;
     const html = wrap(`
-      <h2 style="margin:0 0 4px">Lead i ri 🎉</h2>
-      <p style="margin:0 0 16px;color:#475569">Agjenti i <strong>${esc(r.name)}</strong> sapo kapi një kontakt të ri.</p>
+      <h2 style="margin:0 0 4px">Klient potencial i ri 🎉</h2>
+      <p style="margin:0 0 16px;color:#475569">Asistenti i <strong>${esc(r.name)}</strong> vuri re interes nga një klient.</p>
       <table style="border-collapse:collapse;font-size:14px">${rows || '<tr><td style="color:#64748b">Pa detaje kontakti</td></tr>'}</table>
       ${lead.notes ? `<p style="margin:16px 0 4px;color:#64748b">Përmbledhje</p><p style="margin:0;font-size:14px">${esc(lead.notes)}</p>` : ""}
       ${transcriptBlock(transcript)}
-      <p style="margin:24px 0 0"><a href="${leadsUrl}" style="background:#2563eb;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px">Shiko leads-at</a></p>
+      <p style="margin:24px 0 0"><a href="${leadsUrl}" style="background:#2563eb;color:#fff;padding:10px 16px;border-radius:8px;text-decoration:none;font-size:14px">Shiko kontaktin</a></p>
     `);
     const text = [
-      `Lead i ri për ${r.name}`,
+      `Klient potencial i ri për ${r.name}`,
       lead.name && `Emri: ${lead.name}`,
       lead.email && `Email: ${lead.email}`,
       lead.phone && `Telefon: ${lead.phone}`,
@@ -79,7 +80,7 @@ export class MailService {
 
     await this.send({
       to: r.to,
-      subject: `Lead i ri — ${r.name}`,
+      subject: `Klient potencial i ri — ${r.name}`,
       html,
       text,
       // Let the business reply straight to the customer when we have an email.

@@ -498,7 +498,7 @@ export class ChatService {
     });
   }
 
-  /** The injected port (ADR-001 #2). Persists Lead/Event; no email in 2.1
+  /** The injected port (ADR-001 #2). Persists contact notes/events; no email in 2.1
    *  (the SMB reviews leads in the dashboard — email notify is a later step). */
   private makeToolExecutor(
     tenantId: string,
@@ -514,7 +514,7 @@ export class ChatService {
             string,
             string | undefined
           >;
-          await this.persistLead(
+          await this.recordIntent(
             tenantId,
             conversationId,
             contactId,
@@ -523,7 +523,7 @@ export class ChatService {
           );
           return {
             result:
-              "Lead saved to the business dashboard. Thank the visitor and let them know someone will follow up.",
+              "Saved. Thank the visitor and let them know someone will follow up.",
             effect: { type: "lead_captured" },
           };
         }
@@ -565,10 +565,15 @@ export class ChatService {
     };
   }
 
-  /** Shared lead persistence used by both the `capture_lead` tool and the
-   *  silent take-over capture: enrich the conversation's contact, create the
-   *  Lead + Event, and notify the business by email (fire-and-forget). */
-  private async persistLead(
+  /**
+   * The assistant detected buying interest (ADR-023). Shared by the
+   * `capture_lead` tool and the silent take-over capture. Replaces the old
+   * Lead row: the contact's details are filled in, its stage moves
+   * New → Lead (never downgrading a Client or a Not-a-fit), the assistant's
+   * summary is appended as an intent note, and the business is told by bell
+   * and email.
+   */
+  private async recordIntent(
     tenantId: string,
     conversationId: string,
     contactId: string,
@@ -577,37 +582,37 @@ export class ChatService {
   ): Promise<void> {
     const db = this.prisma.client;
     const { name, email, phone, notes } = fields;
-    if (name || email || phone) {
-      // Was this contact still anonymous before now? If so, this write is the
-      // moment it becomes a real contact → emit a `contact_registered` event.
-      const before = await db.contact.findUnique({
-        where: { id: contactId },
-        select: { name: true, phone: true, email: true },
+    const before = await db.contact.findUnique({
+      where: { id: contactId },
+      select: { name: true, phone: true, email: true, stage: true },
+    });
+    const wasAnonymous = !before?.name && !before?.phone && !before?.email;
+    await db.contact.update({
+      where: { id: contactId },
+      data: {
+        name: name ?? undefined,
+        email: email ?? undefined,
+        phone: phone ?? undefined,
+        lastSeenAt: new Date(),
+        ...(before?.stage === "new" ? { stage: "lead" } : {}),
+      },
+    });
+    if (wasAnonymous && (name || email || phone)) {
+      await db.event.create({
+        data: { tenantId, conversationId, kind: "contact_registered" },
       });
-      const wasAnonymous = !before?.name && !before?.phone && !before?.email;
-      await db.contact.update({
-        where: { id: contactId },
-        data: {
-          name: name ?? undefined,
-          email: email ?? undefined,
-          phone: phone ?? undefined,
-          lastSeenAt: new Date(),
-        },
-      });
-      if (wasAnonymous) {
-        await db.event.create({
-          data: { tenantId, conversationId, kind: "contact_registered" },
-        });
-        this.live.publish(tenantId, { type: "contact_registered", conversationId });
-      }
+      this.live.publish(tenantId, { type: "contact_registered", conversationId });
     }
-    await db.lead.create({
+    await db.contactNote.create({
       data: {
         tenantId,
-        conversationId,
         contactId,
-        status: "new_",
-        payload: { name, email, phone, notes },
+        conversationId,
+        kind: "intent",
+        body:
+          notes?.trim() ||
+          [name, email, phone].filter(Boolean).join(" · ") ||
+          "Interest detected",
       },
     });
     await db.event.create({
@@ -617,10 +622,10 @@ export class ChatService {
     // Notify the business by email (fire-and-forget — must not block or fail
     // the reply if email is down/unconfigured).
     void this.mail
-      .notifyLead(tenantId, { name, email, phone, notes }, transcript)
+      .notifyLead(tenantId, contactId, { name, email, phone, notes }, transcript)
       .catch((e) =>
         this.logger.error(
-          `lead email failed: ${e instanceof Error ? e.message : "unknown"}`,
+          `intent email failed: ${e instanceof Error ? e.message : "unknown"}`,
         ),
       );
   }
@@ -676,7 +681,7 @@ export class ChatService {
         .slice(-12)
         .map((m) => `${m.role}: ${m.content}`)
         .join("\n");
-      await this.persistLead(
+      await this.recordIntent(
         tenantId,
         conversationId,
         contactId,
