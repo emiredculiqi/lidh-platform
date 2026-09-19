@@ -16,8 +16,6 @@ const NAV: Item[] = [
   { id: "contacts", suffix: "/contacts", al: "Kontakte", en: "Contacts", icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" },
   { id: "calendar", suffix: "/calendar", al: "Kalendari", en: "Calendar", icon: "M3 5h18v16H3V5zm0 5h18M8 3v4m8-4v4" },
   { id: "leads", suffix: "/leads", al: "Klientë", en: "Leads", icon: "M16 11a4 4 0 10-8 0 4 4 0 008 0zM4 21a8 8 0 0116 0" },
-  { id: "developer", suffix: "/developer", al: "Integrime", en: "Integrations", icon: "M10 13a5 5 0 007 0l3-3a5 5 0 00-7-7l-1 1m-2 6a5 5 0 00-7 0l-3 3a5 5 0 007 7l1-1" },
-  { id: "test", suffix: "/test", al: "Testo agjentin", en: "Test agent", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" },
   { id: "settings", suffix: "/settings", al: "Cilësimet", en: "Settings", icon: "M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3a7.4 7.4 0 00-.1-1l2-1.6-2-3.4-2.4 1a7.6 7.6 0 00-1.7-1l-.4-2.6H9.2l-.4 2.6a7.6 7.6 0 00-1.7 1l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 000 2l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 001.7 1l.4 2.6h4.6l.4-2.6a7.6 7.6 0 001.7-1l2.4 1 2-3.4-2-1.6c.1-.3.1-.7.1-1z" },
 ];
 

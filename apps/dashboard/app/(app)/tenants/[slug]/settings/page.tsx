@@ -1,51 +1,11 @@
-import { api } from "@/lib/api-server";
-import type { ResponderSettings } from "@/lib/api-core";
-import { T } from "@/components/T";
-import { Card } from "@/components/ui/Card";
-import { ResponderSettingsForm } from "@/components/settings/ResponderSettings";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-/**
- * Business settings. Today: who answers customers by default (ADR-020). Other
- * business-level settings land here as they are built, so the sidebar entry is
- * stable.
- */
-export default async function SettingsPage({
+/** /settings → the first tab. */
+export default async function SettingsIndex({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  let responder: ResponderSettings | null = null;
-  try {
-    responder = await api.getResponder(slug);
-  } catch {
-    responder = null;
-  }
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <h3 className="text-[15px] font-bold text-brand-deep">
-          <T al="Kush u përgjigjet klientëve" en="Who answers customers" />
-        </h3>
-        <p className="mt-1 text-[13px] text-slate-500">
-          <T
-            al="Parazgjedhja për çdo bisedë të re. Brenda çdo bisede mund ta ndryshosh vetëm për atë bisedë."
-            en="The default for every new conversation. Inside any conversation you can still change it for that thread alone."
-          />
-        </p>
-        <div className="mt-5">
-          {responder ? (
-            <ResponderSettingsForm slug={slug} initial={responder} />
-          ) : (
-            <p className="text-sm text-slate-400">
-              <T al="Nuk u ngarkuan cilësimet." en="Settings could not be loaded." />
-            </p>
-          )}
-        </div>
-      </Card>
-    </div>
-  );
+  redirect(`/tenants/${slug}/settings/responder`);
 }
