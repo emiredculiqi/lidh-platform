@@ -125,6 +125,7 @@ export type Thread = {
   contactName: string | null;
   contactPhone: string | null;
   contactEmail: string | null;
+  contactStage: ContactStage;
   messages: {
     role: string;
     contentText: string | null;
@@ -133,8 +134,13 @@ export type Thread = {
   }[];
 };
 
+// Where a contact stands with the business (Contact.stage). Fixed set.
+export type ContactStage = "new" | "lead" | "client" | "not_a_fit";
+export const CONTACT_STAGES: ContactStage[] = ["new", "lead", "client", "not_a_fit"];
+
 export type ContactListItem = {
   id: string;
+  stage: ContactStage;
   name: string | null;
   phone: string | null;
   email: string | null;
@@ -163,6 +169,7 @@ export type ContactLead = {
 
 export type ContactDetail = {
   id: string;
+  stage: ContactStage;
   name: string | null;
   phone: string | null;
   email: string | null;
@@ -381,6 +388,8 @@ export function makeApi(t: Transport) {
     listContacts: (slug: string) =>
       t.get<ContactListItem[]>(`/contacts?tenantSlug=${slug}`),
     getContact: (id: string) => t.get<ContactDetail>(`/contacts/${id}`),
+    setContactStage: (id: string, stage: ContactStage) =>
+      t.post<{ stage: ContactStage }>(`/contacts/${id}/stage`, { stage }),
     getUsage: (slug: string) => t.get<Usage>(`/usage?tenantSlug=${slug}`),
     getChannels: (slug: string) =>
       t.get<ChannelStatus[]>(`/tenants/${slug}/channels`),

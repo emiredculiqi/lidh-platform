@@ -5,6 +5,7 @@ import { assertCanAccessTenant } from "../common/auth/access";
 import type {
   ContactDetailDto,
   ContactListItemDto,
+  ContactStageValue,
 } from "./dto/contact.dto";
 
 const preview = (s: string | null | undefined): string =>
@@ -40,6 +41,7 @@ export class ContactsService {
       take: 300,
       select: {
         id: true,
+        stage: true,
         name: true,
         phone: true,
         email: true,
@@ -51,6 +53,7 @@ export class ContactsService {
 
     return rows.map((c) => ({
       id: c.id,
+      stage: c.stage,
       name: c.name,
       phone: c.phone,
       email: c.email,
@@ -86,6 +89,7 @@ export class ContactsService {
 
     return {
       id: c.id,
+      stage: c.stage,
       name: c.name,
       phone: c.phone,
       email: c.email,
@@ -109,5 +113,25 @@ export class ContactsService {
         capturedAt: l.capturedAt,
       })),
     };
+  }
+
+  /**
+   * Operator marks where a contact stands (new → lead → client, or not a fit).
+   * Scoped through the contact's own tenant, like `get`.
+   */
+  async setStage(id: string, stage: ContactStageValue): Promise<{ stage: string }> {
+    const db = this.prisma.client;
+    const c = await db.contact.findUnique({
+      where: { id },
+      select: { tenantId: true },
+    });
+    if (!c) throw new NotFoundException("contact_not_found");
+    assertCanAccessTenant(this.ctx.get(), c.tenantId);
+    const updated = await db.contact.update({
+      where: { id },
+      data: { stage },
+      select: { stage: true },
+    });
+    return { stage: updated.stage };
   }
 }

@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { ChannelBadge } from "@/components/ui/ChannelBadge";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { formatDateTime } from "@/lib/datetime";
+import { StageSelect } from "@/components/contacts/Stage";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,9 @@ export default async function ContactDetailPage({
             </div>
             <div className="mt-3 text-[16px] font-bold text-brand-deep">
               {name || <T al="Vizitor anonim" en="Anonymous visitor" />}
+            </div>
+            <div className="mt-3">
+              <StageSelect contactId={c.id} stage={c.stage} />
             </div>
             {c.source ? (
               <div className="mt-1">

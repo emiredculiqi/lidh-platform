@@ -3,7 +3,7 @@ import { api } from "@/lib/api-server";
 import { Markdown } from "@/components/Markdown";
 import { T } from "@/components/T";
 import { ChannelBadge } from "@/components/ui/ChannelBadge";
-import { StatusPill } from "@/components/ui/StatusPill";
+import { StagePill } from "@/components/contacts/Stage";
 import { ContactPanel } from "@/components/inbox/ContactPanel";
 import { TakeoverBar } from "@/components/inbox/TakeoverBar";
 import { MarkRead } from "@/components/inbox/MarkRead";
@@ -47,7 +47,7 @@ export default async function ThreadPage({
             </div>
             <div className="mt-0.5 flex items-center gap-2">
               <ChannelBadge kind={thread.channelKind} />
-              <StatusPill status={thread.status} />
+              <StagePill stage={thread.contactStage} />
               {thread.aiPaused ? (
                 <span className="text-[11px] font-medium text-amber-600">
                   <T al="AI i pezulluar" en="AI paused" />

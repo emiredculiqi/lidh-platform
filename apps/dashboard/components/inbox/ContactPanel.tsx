@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import type { Thread } from "@/lib/api-core";
 import { T } from "@/components/T";
 import { ChannelBadge } from "@/components/ui/ChannelBadge";
+import { StageSelect } from "@/components/contacts/Stage";
+import { contactDisplayName, contactInitials } from "@/lib/contact-name";
 
 const LANG: Record<string, string> = {
   al: "Shqip",
@@ -25,14 +27,18 @@ function Field({ label, children }: { label: ReactNode; children: ReactNode }) {
 
 /** Right-hand contact panel inside a conversation. */
 export function ContactPanel({ slug, thread }: { slug: string; thread: Thread }) {
-  const name =
-    thread.contactName || thread.contactPhone || "Vizitor anonim";
+  const who = {
+    name: thread.contactName,
+    phone: thread.contactPhone,
+    email: thread.contactEmail,
+  };
+  const name = contactDisplayName(who) ?? "Vizitor anonim";
 
   return (
     <aside className="hidden w-[290px] flex-none flex-col border-l border-slate-200 bg-white xl:flex">
       <div className="flex flex-col items-center border-b border-slate-200 px-5 py-6 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-blue/10 text-[20px] font-bold text-brand-blue">
-          {name.slice(0, 2).toUpperCase()}
+          {contactInitials(who)}
         </div>
         <div className="mt-3 text-[15px] font-bold text-brand-deep">{name}</div>
         <div className="mt-1">
@@ -48,16 +54,8 @@ export function ContactPanel({ slug, thread }: { slug: string; thread: Thread })
         <Field label={<T al="Gjuha" en="Language" />}>
           {thread.locale ? LANG[thread.locale] ?? thread.locale : "—"}
         </Field>
-        <Field label={<T al="Statusi i AI" en="AI status" />}>
-          {thread.aiPaused ? (
-            <span className="text-amber-600">
-              <T al="I pezulluar" en="Paused" />
-            </span>
-          ) : (
-            <span className="text-emerald-600">
-              <T al="Aktiv" en="Active" />
-            </span>
-          )}
+        <Field label={<T al="Statusi i klientit" en="Customer stage" />}>
+          <StageSelect contactId={thread.contactId} stage={thread.contactStage} />
         </Field>
       </div>
 

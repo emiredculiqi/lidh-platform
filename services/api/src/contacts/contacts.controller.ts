@@ -1,7 +1,11 @@
-import { Controller, Get, Param, Query } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
 import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { ContactsService } from "./contacts.service";
-import { ContactDetailDto, ContactListItemDto } from "./dto/contact.dto";
+import {
+  ContactDetailDto,
+  ContactListItemDto,
+  SetContactStageDto,
+} from "./dto/contact.dto";
 
 @ApiTags("Contacts")
 @Controller("contacts")
@@ -26,5 +30,20 @@ export class ContactsController {
   @ApiOkResponse({ type: ContactDetailDto })
   get(@Param("id") id: string): Promise<ContactDetailDto> {
     return this.contacts.get(id);
+  }
+
+  @Post(":id/stage")
+  @ApiOperation({
+    summary: "Set a contact's stage",
+    description:
+      "new → lead → client, or not_a_fit. Operator action from the inbox " +
+      "right panel or the contacts page. Every contact starts as `new`.",
+  })
+  @ApiOkResponse({ schema: { example: { stage: "lead" } } })
+  setStage(
+    @Param("id") id: string,
+    @Body() dto: SetContactStageDto,
+  ): Promise<{ stage: string }> {
+    return this.contacts.setStage(id, dto.stage);
   }
 }

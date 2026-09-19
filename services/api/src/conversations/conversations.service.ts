@@ -227,7 +227,9 @@ export class ConversationsService {
     const c = await this.prisma.client.conversation.findUnique({
       where: { id },
       include: {
-        contact: { select: { id: true, name: true, phone: true, email: true } },
+        contact: {
+          select: { id: true, name: true, phone: true, email: true, stage: true },
+        },
         channel: { select: { kind: true } },
         messages: {
           orderBy: { createdAt: "asc" },
@@ -252,6 +254,7 @@ export class ConversationsService {
       contactName: c.contact.name,
       contactPhone: c.contact.phone,
       contactEmail: c.contact.email,
+      contactStage: c.contact.stage,
       messages: c.messages.map((m) => ({
         role: m.role,
         contentText: m.contentText,

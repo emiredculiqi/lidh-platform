@@ -1,7 +1,18 @@
 import { ApiProperty } from "@nestjs/swagger";
+import { IsIn } from "class-validator";
+
+export const CONTACT_STAGES = ["new", "lead", "client", "not_a_fit"] as const;
+export type ContactStageValue = (typeof CONTACT_STAGES)[number];
+
+export class SetContactStageDto {
+  @ApiProperty({ enum: CONTACT_STAGES, example: "lead" })
+  @IsIn(CONTACT_STAGES)
+  stage!: ContactStageValue;
+}
 
 export class ContactListItemDto {
   @ApiProperty() id!: string;
+  @ApiProperty({ enum: CONTACT_STAGES, example: "new" }) stage!: string;
   @ApiProperty({ nullable: true, type: String }) name!: string | null;
   @ApiProperty({ nullable: true, type: String }) phone!: string | null;
   @ApiProperty({ nullable: true, type: String }) email!: string | null;
@@ -30,6 +41,7 @@ export class ContactLeadDto {
 
 export class ContactDetailDto {
   @ApiProperty() id!: string;
+  @ApiProperty({ enum: CONTACT_STAGES, example: "new" }) stage!: string;
   @ApiProperty({ nullable: true, type: String }) name!: string | null;
   @ApiProperty({ nullable: true, type: String }) phone!: string | null;
   @ApiProperty({ nullable: true, type: String }) email!: string | null;

@@ -69,5 +69,7 @@ export class ThreadDto {
   contactPhone!: string | null;
   @ApiProperty({ example: "ana@example.com", nullable: true, type: String })
   contactEmail!: string | null;
+  @ApiProperty({ example: "new", enum: ["new", "lead", "client", "not_a_fit"] })
+  contactStage!: string;
   @ApiProperty({ type: [ThreadMessageDto] }) messages!: ThreadMessageDto[];
 }

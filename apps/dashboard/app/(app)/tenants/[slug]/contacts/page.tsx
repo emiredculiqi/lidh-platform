@@ -4,6 +4,7 @@ import { T } from "@/components/T";
 import { Card } from "@/components/ui/Card";
 import { ChannelBadge } from "@/components/ui/ChannelBadge";
 import { formatDateTime } from "@/lib/datetime";
+import { StagePill } from "@/components/contacts/Stage";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,7 @@ export default async function ContactsPage({
                   <span className="truncate text-[14px] font-semibold text-brand-deep">
                     {name || <T al="Vizitor anonim" en="Anonymous visitor" />}
                   </span>
+                  <StagePill stage={c.stage} />
                   {c.source ? <ChannelBadge kind={c.source} /> : null}
                 </div>
                 <div className="truncate text-[12.5px] text-slate-400">

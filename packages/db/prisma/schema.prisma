@@ -103,6 +103,17 @@ enum EventKind {
   contact_opted_in
 }
 
+// Where a contact stands with the business. Set by the operator from the inbox
+// or the contacts page; `new` is automatic on first contact. Fixed values (not
+// free tags) so the inbox can filter on it and every business shares one
+// vocabulary. Lives on Contact, not Conversation — it describes the person.
+enum ContactStage {
+  new
+  lead
+  client
+  not_a_fit
+}
+
 // Tag on Conversation. Lets us reuse the same agent runtime + tables for
 // real customer chats AND internal preview/test sessions, while keeping the
 // SMB inbox clean (filtered to `kind = customer` by default) and excluding
@@ -457,6 +468,7 @@ model Contact {
   // WhatsApp). While set, the agent must not reply — see WhatsappService.
   // Cleared if they later opt back in (START).
   optedOutAt  DateTime?
+  stage       ContactStage @default(new)
   meta        Json     @default("{}")
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -468,6 +480,7 @@ model Contact {
   @@unique([tenantId, email])
   @@unique([tenantId, igHandle])
   @@index([tenantId, lastSeenAt])
+  @@index([tenantId, stage])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
