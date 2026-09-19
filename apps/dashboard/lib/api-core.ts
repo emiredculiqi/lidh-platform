@@ -74,6 +74,8 @@ export type ConversationListItem = {
   lastMessagePreview: string;
   messageCount: number;
   unreadCount: number;
+  // Starred by ME (personal, ADR-024 §2).
+  starred: boolean;
   lastMsgAt: string;
 };
 
@@ -81,7 +83,7 @@ export type ConversationListParams = {
   q?: string;
   channel?: "web" | "whatsapp" | "instagram";
   stage?: ContactStage;
-  only?: "unanswered";
+  only?: "unanswered" | "favorites";
 };
 
 export type ConversationList = {
@@ -148,6 +150,7 @@ export type Thread = {
   contactPhone: string | null;
   contactEmail: string | null;
   contactStage: ContactStage;
+  starred: boolean;
   messages: {
     role: string;
     contentText: string | null;
@@ -407,6 +410,8 @@ export function makeApi(t: Transport) {
       return t.get<ConversationList>(`/conversations?${qs.toString()}`);
     },
     getThread: (id: string) => t.get<Thread>(`/conversations/${id}`),
+    setConversationStar: (id: string, starred: boolean) =>
+      t.post<{ starred: boolean }>(`/conversations/${id}/star`, { starred }),
     setConversationResponder: (id: string, mode: Responder | "inherit") =>
       t.post<{ aiOverride: Responder | null; aiEffective: Responder }>(
         `/conversations/${id}/ai`,

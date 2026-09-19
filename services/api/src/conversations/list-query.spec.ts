@@ -55,7 +55,16 @@ describe("conversationListWhere", () => {
       { id: { in: [] } },
     ]);
     expect(
-      conversationListWhere(T, { only: "unanswered" }, ["a", "b"]).AND,
+      conversationListWhere(T, { only: "unanswered" }, { awaiting: ["a", "b"] }).AND,
     ).toEqual([{ id: { in: ["a", "b"] } }]);
+  });
+
+  it("expresses 'favorites' as the user's starred id list", () => {
+    expect(
+      conversationListWhere(T, { only: "favorites" }, { starred: ["s1"] }).AND,
+    ).toEqual([{ id: { in: ["s1"] } }]);
+    expect(conversationListWhere(T, { only: "favorites" }).AND).toEqual([
+      { id: { in: [] } },
+    ]);
   });
 });

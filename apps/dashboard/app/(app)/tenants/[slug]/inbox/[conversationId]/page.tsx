@@ -7,6 +7,7 @@ import { StagePill } from "@/components/contacts/Stage";
 import { ContactPanel } from "@/components/inbox/ContactPanel";
 import { TakeoverBar } from "@/components/inbox/TakeoverBar";
 import { MarkRead } from "@/components/inbox/MarkRead";
+import { StarButton } from "@/components/inbox/StarButton";
 import { formatTime } from "@/lib/datetime";
 import { contactDisplayName } from "@/lib/contact-name";
 
@@ -41,9 +42,12 @@ export default async function ThreadPage({
           <div className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-brand-blue/10 text-[12px] font-bold text-brand-blue">
             {(name ?? "·").slice(0, 2).toUpperCase()}
           </div>
-          <div className="min-w-0">
-            <div className="truncate text-[14px] font-bold text-brand-deep">
-              {name || <T al="Vizitor anonim" en="Anonymous visitor" />}
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1">
+              <span className="truncate text-[14px] font-bold text-brand-deep">
+                {name || <T al="Vizitor anonim" en="Anonymous visitor" />}
+              </span>
+              <StarButton conversationId={thread.id} starred={thread.starred} size={16} />
             </div>
             <div className="mt-0.5 flex items-center gap-2">
               <ChannelBadge kind={thread.channelKind} />

@@ -6,7 +6,7 @@ import {
   ApiQuery,
   ApiTags,
 } from "@nestjs/swagger";
-import { IsIn, IsString, MaxLength, MinLength } from "class-validator";
+import { IsBoolean, IsIn, IsString, MaxLength, MinLength } from "class-validator";
 import { ConversationsService } from "./conversations.service";
 import {
   ConversationListDto,
@@ -28,6 +28,12 @@ class SetResponderDto {
   })
   @IsIn(RESPONDER_MODES)
   mode!: ResponderChoice;
+}
+
+class SetStarDto {
+  @ApiProperty({ example: true, description: "true = star, false = unstar (personal to the caller)." })
+  @IsBoolean()
+  starred!: boolean;
 }
 
 class ReplyDto {
@@ -57,7 +63,7 @@ export class ConversationsController {
   @ApiQuery({ name: "q", required: false })
   @ApiQuery({ name: "channel", required: false, enum: ["web", "whatsapp", "instagram"] })
   @ApiQuery({ name: "stage", required: false, enum: ["new", "lead", "client", "not_a_fit"] })
-  @ApiQuery({ name: "only", required: false, enum: ["unanswered"] })
+  @ApiQuery({ name: "only", required: false, enum: ["unanswered", "favorites"] })
   @ApiOkResponse({ type: ConversationListDto })
   list(@Query() query: ConversationListQueryDto): Promise<ConversationListDto> {
     return this.conversations.list(query);
@@ -100,6 +106,21 @@ export class ConversationsController {
     @Body() dto: SetResponderDto,
   ): Promise<{ aiOverride: "human" | "ai" | null; aiEffective: "human" | "ai" }> {
     return this.conversations.setResponder(id, dto.mode);
+  }
+
+  @Post(":id/star")
+  @ApiOperation({
+    summary: "Star or unstar this conversation for the calling user",
+    description:
+      "Personal: other team members don't see it. Starred threads float to " +
+      "the top of the caller's inbox and back the Favorites tab.",
+  })
+  @ApiOkResponse({ schema: { example: { starred: true } } })
+  setStar(
+    @Param("id") id: string,
+    @Body() dto: SetStarDto,
+  ): Promise<{ starred: boolean }> {
+    return this.conversations.setStar(id, dto.starred);
   }
 
   @Post(":id/reply")

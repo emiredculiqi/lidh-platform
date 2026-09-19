@@ -35,6 +35,7 @@ export type {
   ContactNote,
   ContactNoteKind,
   Conversation,
+  ConversationStar,
   Message,
   Event,
   UsageDaily,

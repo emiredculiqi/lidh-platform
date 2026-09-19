@@ -31,7 +31,7 @@ export class ConversationListQueryDto {
   @IsIn(CONTACT_STAGES)
   stage?: ContactStageValue;
 
-  @ApiPropertyOptional({ enum: LIST_ONLY, description: "unanswered = the customer spoke last." })
+  @ApiPropertyOptional({ enum: LIST_ONLY, description: "unanswered = the customer spoke last; favorites = starred by the caller." })
   @IsOptional()
   @IsIn(LIST_ONLY)
   only?: ListOnly;
@@ -69,6 +69,8 @@ export class ConversationListItemDto {
   @ApiProperty({ example: 4 }) messageCount!: number;
   @ApiProperty({ example: 2, description: "Unread visitor messages" })
   unreadCount!: number;
+  @ApiProperty({ example: false, description: "Starred by the calling user (personal)." })
+  starred!: boolean;
   @ApiProperty({ example: "2026-05-16T13:00:00.000Z" }) lastMsgAt!: Date;
 }
 
@@ -129,5 +131,7 @@ export class ThreadDto {
   contactEmail!: string | null;
   @ApiProperty({ example: "new", enum: ["new", "lead", "client", "not_a_fit"] })
   contactStage!: string;
+  @ApiProperty({ example: false, description: "Starred by the calling user (personal)." })
+  starred!: boolean;
   @ApiProperty({ type: [ThreadMessageDto] }) messages!: ThreadMessageDto[];
 }

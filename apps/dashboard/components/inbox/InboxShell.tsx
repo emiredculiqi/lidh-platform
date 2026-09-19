@@ -14,13 +14,14 @@ import { api } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { useLive } from "@/components/shell/LiveProvider";
 import { ChannelBadge } from "@/components/ui/ChannelBadge";
+import { StarButton } from "@/components/inbox/StarButton";
 import { formatDateTime } from "@/lib/datetime";
 import { contactDisplayName, contactInitials } from "@/lib/contact-name";
 
 // Filter by where the customer wrote from, plus the one that matters most:
 // who is waiting on us. (The old AI/Human split went with ADR-018 — the inbox
 // is organised around channels and work, not around who answered.)
-type Tab = "all" | "web" | "whatsapp" | "unanswered";
+type Tab = "all" | "web" | "whatsapp" | "unanswered" | "favorites";
 
 /**
  * Inbox list + filters. Filter state lives in the URL (?tab=&q=&stage=) so a
@@ -70,6 +71,7 @@ export function InboxShell({
     if (q) params.q = q;
     if (tab === "web" || tab === "whatsapp") params.channel = tab;
     if (tab === "unanswered") params.only = "unanswered";
+    if (tab === "favorites") params.only = "favorites";
     if (stage) params.stage = stage;
     setLoading(true);
     api
@@ -90,6 +92,7 @@ export function InboxShell({
     al: {
       all: "Të gjitha",
       unanswered: "Pa përgjigje",
+      favorites: "Të preferuarat",
       search: "Kërko emër, telefon, email ose mesazh…",
       allStages: "Çdo status",
       stages: { new: "I ri", lead: "Potencial", client: "Ekzistues", not_a_fit: "Jo i përshtatshëm" } as Record<ContactStage, string>,
@@ -101,6 +104,7 @@ export function InboxShell({
     en: {
       all: "All",
       unanswered: "Unanswered",
+      favorites: "Favorites",
       search: "Search name, phone, email or message…",
       allStages: "Any stage",
       stages: { new: "New", lead: "Lead", client: "Client", not_a_fit: "Not a fit" } as Record<ContactStage, string>,
@@ -137,7 +141,23 @@ export function InboxShell({
       key: "unanswered",
       label: t.unanswered + (list.awaitingCount ? ` · ${list.awaitingCount}` : ""),
     },
+    { key: "favorites", label: "★ " + t.favorites },
   ];
+
+  // A star flips locally and the list re-orders at once (starred first,
+  // newest first within each group) — the server's order, mirrored.
+  function onStar(id: string, starred: boolean) {
+    setList((cur) => {
+      const items = cur.items
+        .map((c) => (c.id === id ? { ...c, starred } : c))
+        .filter((c) => tab !== "favorites" || c.starred)
+        .sort((a, b) => {
+          if (a.starred !== b.starred) return a.starred ? -1 : 1;
+          return Date.parse(b.lastMsgAt) - Date.parse(a.lastMsgAt);
+        });
+      return { ...cur, items };
+    });
+  }
 
   const shown: ConversationListItem[] = list.items;
 
@@ -222,7 +242,7 @@ export function InboxShell({
                 <Link
                   key={c.id}
                   href={withQuery(`${base}/${c.id}`)}
-                  className={`relative flex gap-3 border-b border-slate-100 px-4 py-3 transition ${
+                  className={`group relative flex gap-3 border-b border-slate-100 px-4 py-3 transition ${
                     active ? "bg-brand-blue/5" : "hover:bg-slate-50"
                   }`}
                 >
@@ -262,11 +282,20 @@ export function InboxShell({
                     </p>
                     <div className="mt-1 flex items-center justify-between gap-2">
                       <ChannelBadge kind={c.channelKind} />
-                      {unread ? (
-                        <span className="flex-none rounded-full bg-brand-blue px-2 py-0.5 text-[11px] font-bold leading-none text-white">
-                          {c.unreadCount}
-                        </span>
-                      ) : null}
+                      <span className="flex items-center gap-1">
+                        {unread ? (
+                          <span className="flex-none rounded-full bg-brand-blue px-2 py-0.5 text-[11px] font-bold leading-none text-white">
+                            {c.unreadCount}
+                          </span>
+                        ) : null}
+                        <StarButton
+                          conversationId={c.id}
+                          starred={c.starred}
+                          size={15}
+                          onChange={(v) => onStar(c.id, v)}
+                          className={c.starred ? "" : "opacity-0 group-hover:opacity-100 focus:opacity-100"}
+                        />
+                      </span>
                     </div>
                   </div>
                 </Link>

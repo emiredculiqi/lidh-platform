@@ -184,6 +184,7 @@ model User {
   sentInvitations       Invitation[]   @relation("InvitationInviter")
   assignedConversations Conversation[] @relation("ConversationAssignee")
   contactNotes          ContactNote[]  @relation("ContactNoteAuthor")
+  stars                 ConversationStar[]
 
   @@index([clerkId])
 }
@@ -543,12 +544,30 @@ model Conversation {
   messages   Message[]
   notes      ContactNote[]
   events     Event[]
+  stars      ConversationStar[]
 
   @@index([tenantId, lastMsgAt])
   @@index([tenantId, status])
   @@index([tenantId, kind, lastMsgAt]) // inbox query: WHERE kind='customer'
   @@index([contactId])
   @@index([intakePending, lastMsgAt]) // purge of abandoned intakes
+}
+
+/// A personal star on a thread (ADR-024 §2). One row per (user, conversation);
+/// starred threads float to the top of that user's inbox. Personal, not
+/// shared: a team-wide "important customer" is what Contact.stage is for.
+model ConversationStar {
+  id             String   @id @default(cuid())
+  tenantId       String
+  userId         String
+  conversationId String
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, conversationId])
+  @@index([tenantId, userId])
 }
 
 model Message {

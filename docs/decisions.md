@@ -1221,7 +1221,7 @@ filtered list itself, re-fetching on a `tick` the live provider bumps on every
 event. Client-side filtering over the newest 100 rows was rejected: it could
 not search text and silently missed anything older than the page.
 
-### Decision 2 — Favorites are personal (pending)
+### Decision 2 — Favorites are personal (shipped)
 
 A star is a focus tool for one person, like Gmail's; a shared "important
 customer" is what the contact stage is for. `ConversationStar { userId,

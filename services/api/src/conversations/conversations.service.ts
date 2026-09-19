@@ -138,8 +138,12 @@ export class ConversationsService {
 
     // "Who is waiting on us" is computed once, tenant-wide: it feeds the
     // Unanswered tab's count AND (when that tab is active) the filter itself,
-    // so the badge and the list can never disagree.
-    const awaitingIds = await this.awaitingIds(tenant.id);
+    // so the badge and the list can never disagree. Stars are the caller's
+    // own (ADR-024 §2) and bounded (a person stars a handful, not hundreds).
+    const [awaitingIds, starredIds] = await Promise.all([
+      this.awaitingIds(tenant.id),
+      this.starredIds(tenant.id),
+    ]);
     const where = conversationListWhere(
       tenant.id,
       {
@@ -149,29 +153,50 @@ export class ConversationsService {
         only: query.only,
         includePreview: query.includePreview === "true",
       },
-      awaitingIds,
+      { awaiting: awaitingIds, starred: starredIds },
     );
+    const include = {
+      contact: {
+        select: { name: true, phone: true, email: true, stage: true },
+      },
+      channel: { select: { kind: true } },
+      messages: {
+        orderBy: { createdAt: "desc" as const },
+        take: 1,
+        select: { contentText: true, role: true },
+      },
+      _count: { select: { messages: true } },
+    };
 
-    const [rows, unread] = await Promise.all([
+    const starred = new Set(starredIds);
+    const [page, starredRows, unread] = await Promise.all([
       db.conversation.findMany({
         where,
         orderBy: { lastMsgAt: "desc" },
         take: 100,
-        include: {
-          contact: {
-            select: { name: true, phone: true, email: true, stage: true },
-          },
-          channel: { select: { kind: true } },
-          messages: {
-            orderBy: { createdAt: "desc" },
-            take: 1,
-            select: { contentText: true, role: true },
-          },
-          _count: { select: { messages: true } },
-        },
+        include,
       }),
+      // Starred threads must surface even when older than the newest page.
+      // A second, small query (bounded by the star count) instead of an
+      // ORDER BY the database can't express for "starred by THIS user".
+      starredIds.length && query.only !== "favorites"
+        ? db.conversation.findMany({
+            where: { AND: [where, { id: { in: starredIds } }] },
+            include,
+          })
+        : Promise.resolve([]),
       this.unreadCounts(tenant.id),
     ]);
+    const seen = new Set<string>();
+    const rows = [...starredRows, ...page]
+      .filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)))
+      .sort((a, b) => {
+        const sa = starred.has(a.id) ? 1 : 0;
+        const sb = starred.has(b.id) ? 1 : 0;
+        if (sa !== sb) return sb - sa; // starred first
+        return b.lastMsgAt.getTime() - a.lastMsgAt.getTime();
+      })
+      .slice(0, 100);
 
     const responderSettings = readResponderSettings(tenant.settings);
     const now = new Date();
@@ -195,9 +220,47 @@ export class ConversationsService {
         .slice(0, 120),
       messageCount: c._count.messages,
       unreadCount: unread.get(c.id) ?? 0,
+      starred: starred.has(c.id),
       lastMsgAt: c.lastMsgAt,
     }));
     return { items, awaitingCount: awaitingIds.length };
+  }
+
+  /** The calling user's starred conversation ids in this tenant. */
+  private async starredIds(tenantId: string): Promise<string[]> {
+    const userId = this.ctx.get().userId;
+    if (!userId) return [];
+    const rows = await this.prisma.client.conversationStar.findMany({
+      where: { tenantId, userId },
+      select: { conversationId: true },
+      take: 500,
+    });
+    return rows.map((r) => r.conversationId);
+  }
+
+  /** Star / unstar a thread for the calling user (ADR-024 §2). Idempotent. */
+  async setStar(id: string, starred: boolean): Promise<{ starred: boolean }> {
+    const db = this.prisma.client;
+    const conv = await db.conversation.findUnique({
+      where: { id },
+      select: { tenantId: true },
+    });
+    if (!conv) throw new NotFoundException("conversation_not_found");
+    assertCanAccessTenant(this.ctx.get(), conv.tenantId);
+    const userId = this.ctx.get().userId;
+    if (!userId) throw new BadRequestException("no_user");
+    if (starred) {
+      await db.conversationStar.upsert({
+        where: { userId_conversationId: { userId, conversationId: id } },
+        create: { tenantId: conv.tenantId, userId, conversationId: id },
+        update: {},
+      });
+    } else {
+      await db.conversationStar.deleteMany({
+        where: { userId, conversationId: id },
+      });
+    }
+    return { starred };
   }
 
   /** Open customer threads whose LATEST message is the customer's — the same
@@ -298,6 +361,10 @@ export class ConversationsService {
         },
         channel: { select: { kind: true } },
         tenant: { select: { settings: true } },
+        stars: {
+          where: { userId: this.ctx.get().userId ?? "" },
+          select: { id: true },
+        },
         messages: {
           orderBy: { createdAt: "asc" },
           select: {
@@ -327,6 +394,7 @@ export class ConversationsService {
       contactPhone: c.contact.phone,
       contactEmail: c.contact.email,
       contactStage: c.contact.stage,
+      starred: c.stars.length > 0,
       messages: c.messages.map((m) => ({
         role: m.role,
         contentText: m.contentText,

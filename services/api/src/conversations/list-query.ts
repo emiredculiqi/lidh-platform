@@ -4,7 +4,7 @@ import { CONTACT_STAGES, type ContactStageValue } from "../contacts/dto/contact.
 export const LIST_CHANNELS = ["web", "whatsapp", "instagram"] as const;
 export type ListChannel = (typeof LIST_CHANNELS)[number];
 
-export const LIST_ONLY = ["unanswered"] as const;
+export const LIST_ONLY = ["unanswered", "favorites"] as const;
 export type ListOnly = (typeof LIST_ONLY)[number];
 
 export { CONTACT_STAGES };
@@ -32,11 +32,17 @@ export const MAX_QUERY_CHARS = 100;
  *   find "the customer who asked about delivery to Durrës".
  * - `only=unanswered` is expressed as an id list computed by the caller (the
  *   "latest message is from the customer" test is not a Prisma predicate).
+ * - `only=favorites` is the caller's list of the current user's starred ids.
  */
+export interface ConversationListIds {
+  awaiting?: string[];
+  starred?: string[];
+}
+
 export function conversationListWhere(
   tenantId: string,
   f: ConversationListFilters,
-  awaitingIds?: string[],
+  ids: ConversationListIds = {},
 ): Prisma.ConversationWhereInput {
   const q = f.q?.trim().slice(0, MAX_QUERY_CHARS);
   const and: Prisma.ConversationWhereInput[] = [];
@@ -57,7 +63,8 @@ export function conversationListWhere(
       ],
     });
   }
-  if (f.only === "unanswered") and.push({ id: { in: awaitingIds ?? [] } });
+  if (f.only === "unanswered") and.push({ id: { in: ids.awaiting ?? [] } });
+  if (f.only === "favorites") and.push({ id: { in: ids.starred ?? [] } });
 
   return {
     tenantId,
