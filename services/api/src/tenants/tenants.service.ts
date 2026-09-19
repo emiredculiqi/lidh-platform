@@ -199,6 +199,9 @@ export class TenantsService {
             tenantId: t.id,
             locale: p.locale,
             content: p.content,
+            // Remember the source preset so usage can be checked exactly
+            // (ADR-022); hand-written personas have none.
+            presetId: dto.presetId ?? null,
           })),
         });
 

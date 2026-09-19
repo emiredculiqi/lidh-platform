@@ -19,6 +19,7 @@ import { PersonaPresetsService } from "./persona-presets.service";
 import {
   CreatePersonaPresetDto,
   PersonaPresetResponseDto,
+  PresetUsageDto,
   UpdatePersonaPresetDto,
 } from "./dto/persona-preset.dto";
 import { PlatformAdminOnly } from "../common/auth/platform-admin.decorator";
@@ -75,16 +76,32 @@ export class PersonaPresetsController {
     return this.presets.update(id, dto);
   }
 
+  @Get(":id/usage")
+  @PlatformAdminOnly()
+  @ApiOperation({
+    summary: "Which businesses use this preset",
+    description:
+      "Union of personas that record the preset as their source (exact) and " +
+      "personas whose text still equals the preset's (older tenants; misses " +
+      "edited copies). Shown before deactivating; blocks deleting.",
+  })
+  @ApiOkResponse({ type: PresetUsageDto })
+  usage(@Param("id") id: string): Promise<PresetUsageDto> {
+    return this.presets.usage(id);
+  }
+
   @Delete(":id")
   @PlatformAdminOnly()
   @ApiOperation({
-    summary: "Deactivate a persona preset (soft)",
+    summary: "Delete a persona preset (hard)",
     description:
-      "Hides it from the New-tenant picker. Not destructive — existing " +
-      "tenants keep their personas; reactivate via PUT `{ active: true }`.",
+      "Permanently removes the preset. Refused with 409 `preset_in_use` while " +
+      "any business uses it — deactivate it (PUT `{ active: false }`), migrate " +
+      "those businesses, then delete. Businesses' own personas are copies and " +
+      "are never touched.",
   })
-  @ApiOkResponse({ schema: { example: { id: "restaurant", active: false } } })
-  remove(@Param("id") id: string): Promise<{ id: string; active: false }> {
+  @ApiOkResponse({ schema: { example: { id: "restaurant", deleted: true } } })
+  remove(@Param("id") id: string): Promise<{ id: string; deleted: true }> {
     return this.presets.remove(id);
   }
 }

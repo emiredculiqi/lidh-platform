@@ -218,6 +218,12 @@ export type PersonaPreset = {
   createdAt: string;
 };
 
+export type PresetUsage = {
+  presetId: string;
+  inUse: boolean;
+  tenants: { slug: string; name: string; matchedBy: "reference" | "content" }[];
+};
+
 export type PersonaPresetInput = {
   label: string;
   description: string;
@@ -361,8 +367,10 @@ export function makeApi(t: Transport) {
       id: string,
       body: Partial<PersonaPresetInput> & { active?: boolean },
     ) => t.put<PersonaPreset>(`/persona-presets/${id}`, body),
+    getPersonaPresetUsage: (id: string) =>
+      t.get<PresetUsage>(`/persona-presets/${id}/usage`),
     deletePersonaPreset: (id: string) =>
-      t.del<{ id: string; active: false }>(`/persona-presets/${id}`),
+      t.del<{ id: string; deleted: true }>(`/persona-presets/${id}`),
     getTenant: (slug: string) => t.get<Tenant>(`/tenants/${slug}`),
     createTenant: (body: unknown) => t.post<Tenant>("/tenants", body),
     listKnowledge: (slug: string) =>

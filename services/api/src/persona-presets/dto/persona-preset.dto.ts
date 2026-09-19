@@ -69,3 +69,22 @@ export class PersonaPresetResponseDto {
   @ApiProperty({ example: true }) active!: boolean;
   @ApiProperty({ example: "2026-05-18T00:00:00.000Z" }) createdAt!: Date;
 }
+
+export class PresetUsageTenantDto {
+  @ApiProperty({ example: "bela-real-estate" }) slug!: string;
+  @ApiProperty({ example: "Bela Real Estate" }) name!: string;
+  @ApiProperty({
+    enum: ["reference", "content"],
+    description:
+      "reference = the persona records this preset as its source (exact); " +
+      "content = the persona text still equals the preset text (older tenants; misses edited copies).",
+  })
+  matchedBy!: "reference" | "content";
+}
+
+/** Who uses a preset (ADR-022). Drives the deactivate warning and the delete refusal. */
+export class PresetUsageDto {
+  @ApiProperty({ example: "restaurant" }) presetId!: string;
+  @ApiProperty({ example: true }) inUse!: boolean;
+  @ApiProperty({ type: [PresetUsageTenantDto] }) tenants!: PresetUsageTenantDto[];
+}

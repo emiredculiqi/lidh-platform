@@ -379,6 +379,12 @@ model AgentPersona {
   tenantId  String // denormalized for RLS
   locale    String // "al" | "en" | "it" | "de" | "fr" | ...
   content   String   @db.Text
+  // Which PersonaPreset this row was copied from at tenant creation, if any
+  // (ADR-022). Informational, not a FK: presets are copied, and the copy must
+  // survive the preset being edited or deleted. Null for hand-written personas
+  // and for tenants created before this column existed — those are detected by
+  // content match instead.
+  presetId  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -387,6 +393,7 @@ model AgentPersona {
 
   @@unique([agentId, locale])
   @@index([tenantId])
+  @@index([presetId])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

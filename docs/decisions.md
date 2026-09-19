@@ -1094,3 +1094,41 @@ cannot be spoofed: a visitor has no token.
   to watch until an eval exists (todo #6).
 - Some visitors will leave at the name prompt. That is the accepted trade for
   an inbox where every web contact is reachable.
+
+## ADR-022 — Persona presets: usage check, warn on deactivate, refuse delete while in use
+
+**Status:** Accepted · 2026-09-19.
+
+- **Context:** The admin console could only deactivate a preset; the API's
+  `DELETE` was itself a soft-delete. After the real-estate retirement
+  (ADR-019) the `real_estate` preset could only be hidden, not removed. And
+  neither action told the admin whether any business was using the preset —
+  presets are copied into a tenant's personas at creation with no
+  back-reference (ADR-010), so "in use" was unknowable.
+- **Plain:** Before hiding or deleting a preset, the admin sees which
+  businesses use it. Hiding is always allowed (existing businesses keep their
+  copies). Deleting is refused while any business uses it.
+
+### Decision 1 — Record the source preset from now on, infer it for the past
+
+`AgentPersona.presetId` (informational, not a foreign key — the copy must
+outlive the preset) is written at tenant creation. For tenants created before
+the column existed, usage is inferred by **content match**: a persona whose
+text equals the preset's text for that locale with `{business}` expanded to
+the tenant's name. The match misses copies the owner has since edited, and the
+admin UI says so.
+
+### Decision 2 — Deactivate warns; delete is blocked
+
+`GET /v1/persona-presets/:id/usage` returns the businesses and how each was
+matched. Deactivating (`PUT { active: false }`) shows the list and proceeds —
+it only affects future signups. `DELETE` is now a hard delete and returns
+`409 preset_in_use` with the list while any business uses the preset. The
+refusal protects the *source* text, not the tenants: their personas are copies
+and survive regardless.
+
+### Consequences
+
+- The `real_estate` preset can now be deleted once no business matches it.
+- Usage is computed on demand across all non-archived tenants; fine at the
+  current scale, and it only runs on an admin click.
