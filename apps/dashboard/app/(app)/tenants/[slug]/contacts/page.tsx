@@ -5,31 +5,52 @@ import { Card } from "@/components/ui/Card";
 import { ChannelBadge } from "@/components/ui/ChannelBadge";
 import { formatDateTime } from "@/lib/datetime";
 import { StagePill } from "@/components/contacts/Stage";
+import { ContactsFilters } from "@/components/contacts/ContactsFilters";
+import type { ContactListParams, ContactStage } from "@/lib/api-core";
 
 export const dynamic = "force-dynamic";
 
+const STAGES = new Set(["new", "lead", "client", "not_a_fit"]);
+
 export default async function ContactsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { slug } = await params;
-  const contacts = await api.listContacts(slug);
+  const sp = await searchParams;
+  const one = (k: string) => (Array.isArray(sp[k]) ? sp[k]?.[0] : sp[k]) || undefined;
 
-  if (contacts.length === 0) {
-    return (
-      <Card className="py-16 text-center">
-        <p className="text-sm text-slate-400">
-          <T
-            al="Ende asnjë kontakt. Kontaktet shfaqen këtu sapo klientët fillojnë të bisedojnë."
-            en="No contacts yet. They appear here as soon as customers start chatting."
-          />
-        </p>
-      </Card>
-    );
-  }
+  // Filters live in the URL (see ContactsFilters); validate loosely here —
+  // the API validates strictly and rejects anything else.
+  const query: ContactListParams = {
+    q: one("q"),
+    stage: STAGES.has(one("stage") ?? "") ? (one("stage") as ContactStage) : undefined,
+    has: one("has") === "phone" || one("has") === "email" ? (one("has") as "phone" | "email") : undefined,
+    sort: one("sort") === "recent" ? "recent" : undefined,
+  };
+  const filtering = Boolean(query.q || query.stage || query.has);
+  const contacts = await api.listContacts(slug, query);
 
   return (
+    <div className="space-y-4">
+      <ContactsFilters />
+      {contacts.length === 0 ? (
+        <Card className="py-16 text-center">
+          <p className="text-sm text-slate-400">
+            {filtering ? (
+              <T al="Asnjë kontakt nuk përputhet me filtrat." en="No contacts match these filters." />
+            ) : (
+              <T
+                al="Ende asnjë kontakt. Kontaktet shfaqen këtu sapo klientët fillojnë të bisedojnë."
+                en="No contacts yet. They appear here as soon as customers start chatting."
+              />
+            )}
+          </p>
+        </Card>
+      ) : (
     <Card padded={false}>
       <div className="divide-y divide-slate-100">
         {contacts.map((c) => {
@@ -70,5 +91,7 @@ export default async function ContactsPage({
         })}
       </div>
     </Card>
+      )}
+    </div>
   );
 }

@@ -1,8 +1,37 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { IsIn } from "class-validator";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
+import { IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 
 export const CONTACT_STAGES = ["new", "lead", "client", "not_a_fit"] as const;
 export type ContactStageValue = (typeof CONTACT_STAGES)[number];
+
+/** Query for GET /contacts. Everything optional except the tenant. */
+export class ContactListQueryDto {
+  @ApiProperty({ example: "acme-coffee" })
+  @IsString()
+  @MinLength(1)
+  tenantSlug!: string;
+
+  @ApiPropertyOptional({ description: "Search name, phone and email (case-insensitive substring)." })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+
+  @ApiPropertyOptional({ enum: CONTACT_STAGES })
+  @IsOptional()
+  @IsIn(CONTACT_STAGES)
+  stage?: ContactStageValue;
+
+  @ApiPropertyOptional({ enum: ["phone", "email"], description: "Only contacts that have this detail." })
+  @IsOptional()
+  @IsIn(["phone", "email"])
+  has?: "phone" | "email";
+
+  @ApiPropertyOptional({ enum: ["name", "recent"], description: "name = A–Z by display name (default); recent = last seen first." })
+  @IsOptional()
+  @IsIn(["name", "recent"])
+  sort?: "name" | "recent";
+}
 
 export class SetContactStageDto {
   @ApiProperty({ enum: CONTACT_STAGES, example: "lead" })

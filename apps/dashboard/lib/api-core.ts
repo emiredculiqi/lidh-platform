@@ -156,6 +156,13 @@ export type ResponderSettings = {
 export type ContactStage = "new" | "lead" | "client" | "not_a_fit";
 export const CONTACT_STAGES: ContactStage[] = ["new", "lead", "client", "not_a_fit"];
 
+export type ContactListParams = {
+  q?: string;
+  stage?: ContactStage;
+  has?: "phone" | "email";
+  sort?: "name" | "recent";
+};
+
 export type ContactListItem = {
   id: string;
   stage: ContactStage;
@@ -418,8 +425,14 @@ export function makeApi(t: Transport) {
     revokeInvite: (slug: string, id: string) =>
       t.del<{ ok: true }>(`/tenants/${slug}/team/invitations/${id}`),
     listLeads: (slug: string) => t.get<Lead[]>(`/leads?tenantSlug=${slug}`),
-    listContacts: (slug: string) =>
-      t.get<ContactListItem[]>(`/contacts?tenantSlug=${slug}`),
+    listContacts: (slug: string, params: ContactListParams = {}) => {
+      const qs = new URLSearchParams({ tenantSlug: slug });
+      if (params.q) qs.set("q", params.q);
+      if (params.stage) qs.set("stage", params.stage);
+      if (params.has) qs.set("has", params.has);
+      if (params.sort) qs.set("sort", params.sort);
+      return t.get<ContactListItem[]>(`/contacts?${qs.toString()}`);
+    },
     getContact: (id: string) => t.get<ContactDetail>(`/contacts/${id}`),
     setContactStage: (id: string, stage: ContactStage) =>
       t.post<{ stage: ContactStage }>(`/contacts/${id}/stage`, { stage }),

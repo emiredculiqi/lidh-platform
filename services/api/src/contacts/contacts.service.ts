@@ -5,6 +5,7 @@ import { assertCanAccessTenant } from "../common/auth/access";
 import type {
   ContactDetailDto,
   ContactListItemDto,
+  ContactListQueryDto,
   ContactStageValue,
 } from "./dto/contact.dto";
 
@@ -19,24 +20,45 @@ export class ContactsService {
     private readonly ctx: TenantContextService,
   ) {}
 
-  async list(tenantSlug: string): Promise<ContactListItemDto[]> {
+  async list(query: ContactListQueryDto): Promise<ContactListItemDto[]> {
     const db = this.prisma.client;
-    const tenant = await db.tenant.findUnique({ where: { slug: tenantSlug } });
+    const tenant = await db.tenant.findUnique({
+      where: { slug: query.tenantSlug },
+    });
     if (!tenant) throw new NotFoundException("tenant_not_found");
     assertCanAccessTenant(this.ctx.get(), tenant.id);
 
+    const q = query.q?.trim();
     const rows = await db.contact.findMany({
-      // Only contacts who actually gave us a way to reach them — exclude
-      // anonymous chat sessions (no name/phone/email/handle).
       where: {
         tenantId: tenant.id,
+        // Only contacts who actually gave us a way to reach them — exclude
+        // anonymous chat sessions (no name/phone/email/handle).
         OR: [
           { name: { not: null } },
           { phone: { not: null } },
           { email: { not: null } },
           { igHandle: { not: null } },
         ],
+        ...(query.stage ? { stage: query.stage } : {}),
+        ...(query.has === "phone" ? { phone: { not: null } } : {}),
+        ...(query.has === "email" ? { email: { not: null } } : {}),
+        ...(q
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { name: { contains: q, mode: "insensitive" } },
+                    { phone: { contains: q } },
+                    { email: { contains: q, mode: "insensitive" } },
+                  ],
+                },
+              ],
+            }
+          : {}),
       },
+      // A–Z is applied below on the DISPLAY name (name → phone → email), which
+      // the database can't order by directly; "recent" is ordered here.
       orderBy: { lastSeenAt: "desc" },
       take: 300,
       select: {
@@ -51,7 +73,7 @@ export class ContactsService {
       },
     });
 
-    return rows.map((c) => ({
+    const items = rows.map((c) => ({
       id: c.id,
       stage: c.stage,
       name: c.name,
@@ -62,6 +84,14 @@ export class ContactsService {
       leadCount: c._count.leads,
       lastSeenAt: c.lastSeenAt,
     }));
+    if ((query.sort ?? "name") === "name") {
+      // Same rule as the UI's display name, so a number-only WhatsApp contact
+      // sorts by its number instead of floating to the top as a blank.
+      const key = (c: (typeof items)[number]) =>
+        (c.name || c.phone || c.email || "").trim().toLocaleLowerCase();
+      items.sort((a, b) => key(a).localeCompare(key(b), "sq"));
+    }
+    return items;
   }
 
   async get(id: string): Promise<ContactDetailDto> {

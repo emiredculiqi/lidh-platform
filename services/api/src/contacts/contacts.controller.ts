@@ -4,6 +4,7 @@ import { ContactsService } from "./contacts.service";
 import {
   ContactDetailDto,
   ContactListItemDto,
+  ContactListQueryDto,
   SetContactStageDto,
 } from "./dto/contact.dto";
 
@@ -15,12 +16,19 @@ export class ContactsController {
   @Get()
   @ApiOperation({
     summary: "List a tenant's contacts",
-    description: "Newest-seen first, max 300. Backs the Contacts section.",
+    description:
+      "Search (q over name/phone/email), filter (stage, has=phone|email) and " +
+      "sort (name = A–Z by display name, default; recent = last seen first). " +
+      "Max 300 rows. Backs the Contacts section.",
   })
   @ApiQuery({ name: "tenantSlug", example: "acme-coffee" })
+  @ApiQuery({ name: "q", required: false })
+  @ApiQuery({ name: "stage", required: false, enum: ["new", "lead", "client", "not_a_fit"] })
+  @ApiQuery({ name: "has", required: false, enum: ["phone", "email"] })
+  @ApiQuery({ name: "sort", required: false, enum: ["name", "recent"] })
   @ApiOkResponse({ type: ContactListItemDto, isArray: true })
-  list(@Query("tenantSlug") tenantSlug: string): Promise<ContactListItemDto[]> {
-    return this.contacts.list(tenantSlug);
+  list(@Query() query: ContactListQueryDto): Promise<ContactListItemDto[]> {
+    return this.contacts.list(query);
   }
 
   @Get(":id")
