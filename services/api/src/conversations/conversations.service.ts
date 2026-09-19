@@ -140,6 +140,8 @@ export class ConversationsService {
         where: {
           tenantId: tenant.id,
           ...(includePreview ? {} : { kind: "customer" }),
+          // Web intake gate (ADR-021): invisible until name + email given.
+          intakePending: false,
         },
         orderBy: { lastMsgAt: "desc" },
         take: 100,
@@ -196,6 +198,7 @@ export class ConversationsService {
       JOIN "Conversation" c ON c.id = m."conversationId"
       WHERE c."tenantId" = ${tenantId}
         AND c.kind::text = 'customer'
+        AND c."intakePending" = false
         AND m.role::text = 'user'
         AND (c."lastReadAt" IS NULL OR m."createdAt" > c."lastReadAt")
       GROUP BY m."conversationId"

@@ -4,18 +4,22 @@ import { useRef, useState } from "react";
 import { apiBase } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { Markdown } from "./Markdown";
+import { useAuth } from "@clerk/nextjs";
 
 type Msg = { role: "user" | "assistant"; text: string };
 
-// Preview/test chat. Streams from POST /v1/chat/web (SSE) — EventSource only
-// does GET, so we fetch + manually parse the event/data stream. Conversations
-// created here are kind=customer for now; a preview kind comes with the auth
-// step (matches the schema's ConversationKind).
+// Preview/test chat. Streams from POST /v1/chat/preview (SSE) — EventSource
+// only does GET, so we fetch + manually parse the event/data stream. The route
+// is Clerk-guarded and creates kind=preview conversations: no intake gate,
+// never in the inbox, never counted in usage (ADR-021).
 export function TestChat({ tenantSlug }: { tenantSlug: string }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const sessionRef = useRef(`dash-test-${Math.random().toString(36).slice(2)}`);
+  // The preview route is Clerk-guarded (not @Public): preview conversations
+  // skip the intake gate and never reach the business's inbox or usage.
+  const { getToken } = useAuth();
 
   const t = useT({
     al: {
@@ -44,9 +48,13 @@ export function TestChat({ tenantSlug }: { tenantSlug: string }) {
     setMsgs((m) => [...m, { role: "assistant", text: "" }]);
 
     try {
-      const res = await fetch(`${apiBase}/v1/chat/web`, {
+      const token = await getToken();
+      const res = await fetch(`${apiBase}/v1/chat/preview`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           tenantSlug,
           message,

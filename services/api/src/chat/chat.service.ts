@@ -15,6 +15,13 @@ import { RetrievalService, buildRetrievalQuery } from "./retrieval.service";
 import type { ChatWebRequestDto } from "./dto/chat-web-request.dto";
 import { loadTenantEntitlements } from "../tenants/entitlements";
 import { effectiveResponder, readResponderSettings } from "../tenants/responder";
+import {
+  applyIntakeReply,
+  intakeHandoffToTeam,
+  intakePrompt,
+  intakeStep,
+  type IntakeState,
+} from "./intake";
 
 /** Client-facing stream events (controller maps these to SSE). `usage` is
  *  handled internally for token billing and never reaches the client. */
@@ -49,8 +56,18 @@ export class ChatService {
   async *runWeb(
     dto: ChatWebRequestDto,
     origin?: string,
+    opts: {
+      /**
+       * Authenticated preview (the dashboard's test chat). Creates
+       * `kind: preview` conversations: no intake gate, never shown in the
+       * inbox, never counted in usage. Only the guarded /chat/preview route
+       * sets this — a public caller cannot.
+       */
+      preview?: boolean;
+    } = {},
   ): AsyncGenerator<ChatStreamEvent> {
     const db = this.prisma.client;
+    const preview = opts.preview === true;
 
     const tenant = await db.tenant.findUnique({
       where: { slug: dto.tenantSlug },
@@ -151,27 +168,19 @@ export class ChatService {
           tenantId: tenant.id,
           channelId: channel.id,
           contactId: contact.id,
-          kind: "customer",
+          kind: preview ? "preview" : "customer",
           status: "open",
           locale,
           channelRef: dto.sessionRef ?? null,
-        },
-      });
-      // Live: a brand-new conversation just started.
-      this.live.publish(tenant.id, {
-        type: "conversation.started",
-        conversationId: conversation.id,
-        channelKind: channel.kind,
-      });
-      // Persist it to the activity log (powers the notifications feed).
-      await db.event.create({
-        data: {
-          tenantId: tenant.id,
-          conversationId: conversation.id,
-          kind: "conversation_started",
+          // Web intake gate (ADR-021): a real visitor stays invisible to the
+          // business until they have given a name and email. The "started"
+          // live event and feed entry fire at intake completion, not here.
+          intakePending: !preview,
         },
       });
     }
+    // While gated, nothing about this conversation reaches the dashboard.
+    const gated = conversation.intakePending;
 
     yield { kind: "meta", conversationId: conversation.id };
 
@@ -200,12 +209,102 @@ export class ChatService {
         contentText: dto.message,
       },
     });
-    this.live.publish(tenant.id, {
-      type: "message",
-      conversationId: conversation.id,
-      role: "user",
-      preview: dto.message.slice(0, 120),
-    });
+    if (!gated && !preview) {
+      this.live.publish(tenant.id, {
+        type: "message",
+        conversationId: conversation.id,
+        role: "user",
+        preview: dto.message.slice(0, 120),
+      });
+    }
+
+    // ── Web intake gate (ADR-021) ─────────────────────────────────────────
+    // Scripted, not model-driven: two bot lines asking for a name and an
+    // email. Runs regardless of the responder setting — it is the only way a
+    // business set to "team answers" ever sees a web conversation. Until it
+    // completes, the agent does not answer and the thread is invisible.
+    if (gated) {
+      const contact = await db.contact.findUnique({
+        where: { id: conversation.contactId },
+        select: { id: true, name: true, email: true },
+      });
+      const before: IntakeState = {
+        name: contact?.name ?? null,
+        email: contact?.email ?? null,
+      };
+      const after = applyIntakeReply(before, dto.message);
+      const step = intakeStep(after);
+
+      if (step !== "done") {
+        // Remember whatever was captured (a name at the name prompt, an
+        // email volunteered early) so the next reply builds on it.
+        if (after.name !== before.name || after.email !== before.email) {
+          await this.saveIntakeProgress(conversation.contactId, after);
+        }
+        // Retry wording when this reply was meant to answer the current
+        // prompt but didn't (a question at the name prompt, a bad email).
+        const retry =
+          step === intakeStep(before) && conversation.status === "open" &&
+          history.some((m) => m.role === "assistant");
+        const prompt = intakePrompt(step, locale, after, { retry });
+        await db.message.create({
+          data: {
+            conversationId: conversation.id,
+            tenantId: tenant.id,
+            role: "assistant",
+            contentText: prompt,
+          },
+        });
+        await db.conversation.update({
+          where: { id: conversation.id },
+          data: { lastMsgAt: new Date() },
+        });
+        yield { kind: "text", delta: prompt };
+        yield { kind: "done" };
+        return;
+      }
+
+      // Complete: the visitor is now a contact the business can see.
+      await this.completeIntake(tenant.id, conversation.id, conversation.contactId, after);
+      this.live.publish(tenant.id, {
+        type: "conversation.started",
+        conversationId: conversation.id,
+        channelKind: channel.kind,
+      });
+      this.live.publish(tenant.id, {
+        type: "message",
+        conversationId: conversation.id,
+        role: "user",
+        preview: dto.message.slice(0, 120),
+      });
+
+      const responderNow = effectiveResponder(
+        readResponderSettings(tenant.settings),
+        conversation.aiOverride,
+      );
+      if (responderNow === "human") {
+        const bye = intakeHandoffToTeam(locale, after);
+        await db.message.create({
+          data: {
+            conversationId: conversation.id,
+            tenantId: tenant.id,
+            role: "assistant",
+            contentText: bye,
+          },
+        });
+        await db.conversation.update({
+          where: { id: conversation.id },
+          data: { lastMsgAt: new Date() },
+        });
+        yield { kind: "text", delta: bye };
+        yield { kind: "effect", effect: { type: "human_handoff", takeover: true } };
+        yield { kind: "done" };
+        return;
+      }
+      // Assistant mode: fall through and let the agent answer. The history
+      // it sees includes the intake exchange and the visitor's original
+      // question, which it answers naturally.
+    }
 
     // Who answers this thread right now: the conversation's own override if a
     // human took over (or handed it to the assistant), else the business's
@@ -309,12 +408,14 @@ export class ChatService {
           tokensOut,
         },
       });
-      this.live.publish(tenant.id, {
-        type: "message",
-        conversationId: conversation.id,
-        role: "assistant",
-        preview: assistantText.slice(0, 120),
-      });
+      if (!preview) {
+        this.live.publish(tenant.id, {
+          type: "message",
+          conversationId: conversation.id,
+          role: "assistant",
+          preview: assistantText.slice(0, 120),
+        });
+      }
     }
     await db.conversation.update({
       where: { id: conversation.id },
@@ -322,6 +423,79 @@ export class ChatService {
     });
 
     yield { kind: "done" };
+  }
+
+  /** Store partial intake progress on the placeholder contact. */
+  private async saveIntakeProgress(
+    contactId: string,
+    s: IntakeState,
+  ): Promise<void> {
+    const db = this.prisma.client;
+    try {
+      await db.contact.update({
+        where: { id: contactId },
+        data: { name: s.name ?? undefined, email: s.email ?? undefined },
+      });
+    } catch {
+      // A duplicate email on the placeholder is resolved at completion by
+      // merging into the existing contact; don't fail the prompt over it.
+      await db.contact.update({
+        where: { id: contactId },
+        data: { name: s.name ?? undefined },
+      });
+    }
+  }
+
+  /**
+   * Intake complete: the visitor becomes a real contact and the conversation
+   * becomes visible. If a contact with this email already exists for the
+   * tenant (a returning visitor in a new browser), the conversation is moved
+   * onto that contact and the placeholder is deleted — this is what dedupes
+   * web contacts across sessions.
+   */
+  private async completeIntake(
+    tenantId: string,
+    conversationId: string,
+    placeholderContactId: string,
+    s: IntakeState,
+  ): Promise<void> {
+    const db = this.prisma.client;
+    const email = s.email as string;
+    const existing = await db.contact.findUnique({
+      where: { tenantId_email: { tenantId, email } },
+      select: { id: true, name: true },
+    });
+
+    let contactId = placeholderContactId;
+    if (existing && existing.id !== placeholderContactId) {
+      await db.conversation.update({
+        where: { id: conversationId },
+        data: { contactId: existing.id, intakePending: false },
+      });
+      await db.contact.update({
+        where: { id: existing.id },
+        data: { name: existing.name ?? s.name ?? undefined, lastSeenAt: new Date() },
+      });
+      await db.contact.delete({ where: { id: placeholderContactId } });
+      contactId = existing.id;
+    } else {
+      await db.contact.update({
+        where: { id: placeholderContactId },
+        data: { name: s.name ?? undefined, email, lastSeenAt: new Date() },
+      });
+      await db.conversation.update({
+        where: { id: conversationId },
+        data: { intakePending: false },
+      });
+    }
+
+    // Both feed entries the bell shows: the thread exists, and it is a person.
+    await db.event.createMany({
+      data: [
+        { tenantId, conversationId, kind: "conversation_started" },
+        { tenantId, conversationId, kind: "contact_registered", meta: { contactId } },
+      ],
+    });
   }
 
   /** The injected port (ADR-001 #2). Persists Lead/Event; no email in 2.1

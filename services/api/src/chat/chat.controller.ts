@@ -41,6 +41,38 @@ export class ChatController {
     @Req() req: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
+    return this.stream(dto, req, reply, { preview: false });
+  }
+
+  /**
+   * The dashboard's test chat. NOT @Public — the global AuthGuard requires a
+   * Clerk token, so only a signed-in member (or platform admin) reaches it.
+   * Same handler, but conversations are `kind: preview`: no intake gate
+   * (ADR-021), never in the inbox, never counted in usage. Previously the
+   * test chat used /chat/web and its sessions counted as real customers.
+   */
+  @Post("preview")
+  @ApiOperation({
+    summary: "Authenticated preview chat (dashboard test chat, SSE stream)",
+    description:
+      "Same stream contract as `POST /v1/chat/web`, but requires a Clerk " +
+      "Bearer token and creates preview conversations that skip the intake " +
+      "gate and are excluded from the inbox and usage.",
+  })
+  async preview(
+    @Body() dto: ChatWebRequestDto,
+    @Req() req: FastifyRequest,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    return this.stream(dto, req, reply, { preview: true });
+  }
+
+  private async stream(
+    dto: ChatWebRequestDto,
+    req: FastifyRequest,
+    reply: FastifyReply,
+    opts: { preview: boolean },
+  ): Promise<void> {
     // Manual raw writeHead bypasses Fastify's CORS plugin, so the browser
     // would block this cross-origin stream ("Failed to fetch"). Re-apply CORS
     // here, mirroring the global config: reflect the request Origin (the
@@ -64,7 +96,7 @@ export class ChatController {
     try {
       const reqOrigin =
         typeof req.headers.origin === "string" ? req.headers.origin : undefined;
-      for await (const ev of this.chat.runWeb(dto, reqOrigin)) {
+      for await (const ev of this.chat.runWeb(dto, reqOrigin, opts)) {
         switch (ev.kind) {
           case "meta":
             send("meta", { conversationId: ev.conversationId });

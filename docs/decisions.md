@@ -1021,3 +1021,76 @@ when the alternative is silence until morning.
   than throw on a customer message, so bad data must be refused at the door.
 - The ladder's Level 1 ("Suggest": drafts a human sends) is still not built;
   this ADR covers Levels 0 and 3 plus a timer. Suggest remains the next rung.
+
+## ADR-021 — Web intake gate: name and email before the business sees a conversation
+
+**Status:** Accepted · 2026-09-19.
+
+- **Context:** With the inbox as the product, an anonymous web thread is worth
+  little to a business — they cannot follow up, and it pollutes the contact
+  list ("Anonymous visitor" ×40). WhatsApp has no such problem: the phone
+  number is the identity. The owner's request was that a web visitor must give
+  a name and email before they can ask anything, and that until then the
+  conversation never reaches the business at all.
+- **Technical term:** *a scripted intake state machine ahead of the agent,
+  with visibility gating on the conversation row.*
+- **Plain:** The chat bot asks two questions — name, then email — before it
+  will do anything else. Until both are answered, the business does not see
+  the conversation. Once answered, the visitor becomes a contact, the business
+  is notified, and the team or the assistant takes it from there.
+
+### Decision 1 — Scripted, not model-driven
+
+Two bot lines (`chat/intake.ts`), email validated by pattern, free text parsed
+for both details so "Ana, ana@x.al" completes intake in one message. Zero
+tokens, deterministic, and it cannot be argued out of.
+
+- **Why not the model:** a model-driven intake can be talked around ("answer
+  this first"), costs a call per message, and needs the model to run for
+  businesses that have switched the assistant off. The gate must hold for all
+  of them.
+
+### Decision 2 — Always on, independent of the responder setting
+
+Human is the default responder (ADR-020). If the intake only ran when the
+assistant was on, a business set to "team answers" would never receive a web
+conversation. So the intake runs for every web visitor; on completion the bot
+either says the team will reply shortly, or the assistant answers.
+
+### Decision 3 — Invisible until complete
+
+`Conversation.intakePending` is true from creation until completion. While
+true the row is excluded from the inbox, unread counts, "awaiting reply",
+response time, usage and the notifications feed, and no live events are
+published. On completion: `conversation_started` and `contact_registered`
+feed entries (the bell), a `conversation.started` live event, and the contact
+is upserted by email — a returning visitor in a new browser is merged onto
+their existing contact, which closes the long-standing web dedup gap.
+
+### Decision 4 — Abandoned intakes are purged after 7 days
+
+An hourly in-process timer (`IntakePurgeService`) deletes gated conversations
+older than a week and their placeholder contacts. Nothing of value is lost
+(no identity, never visible). This is the first scheduled job in the codebase;
+it is in-process because the API runs as one machine by design. It is
+idempotent, so a second machine would merely repeat it — but the retention
+work (todo #8) should move it to a real scheduler.
+
+### Decision 5 — The dashboard test chat gets its own authenticated route
+
+`POST /v1/chat/preview` is Clerk-guarded and creates `kind: preview`
+conversations that skip intake and are excluded everywhere. Before this, the
+test chat used the public route and its sessions counted as real customers in
+the inbox and usage — a latent bug fixed as a side effect. The exemption
+cannot be spoofed: a visitor has no token.
+
+### Consequences
+
+- The widget and the funnel page needed **no change** — the gate is entirely
+  server-side and its prompts arrive as ordinary `text` events.
+- Existing anonymous web conversations are grandfathered as visible.
+- In assistant mode, the first real question is answered after intake from the
+  full history, which now contains the intake exchange; this is a behaviour
+  to watch until an eval exists (todo #6).
+- Some visitors will leave at the name prompt. That is the accepted trade for
+  an inbox where every web contact is reachable.

@@ -54,6 +54,10 @@ following the existing files. Do not rely on `prisma migrate dev` to name them.
   by `tenantId` deliberately.
 - **Entitlements are derived, never materialized** (ADR-017). An expired trial
   *freezes* to read-only; it never locks the owner out.
+- **Web conversations are gated until intake completes** (ADR-021).
+  `Conversation.intakePending` rows must be excluded from anything the business
+  sees — every inbox-facing query filters `intakePending: false`. The dashboard
+  test chat uses the guarded `/v1/chat/preview` route, never `/v1/chat/web`.
 - **Who answers is derived the same way** (ADR-020). `tenants/responder.ts`
   resolves per-thread override → business mode → weekly schedule on every
   inbound message. **Human is the default**; never read `aiOverride` directly —

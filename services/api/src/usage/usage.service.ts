@@ -41,7 +41,12 @@ export class UsageService {
       avgResponseSeconds,
     ] = await Promise.all([
       db.conversation.count({
-        where: { tenantId, ...customer, lastMsgAt: { gte: monthStart } },
+        where: {
+          tenantId,
+          ...customer,
+          intakePending: false,
+          lastMsgAt: { gte: monthStart },
+        },
       }),
       db.message.count({
         where: {
@@ -108,6 +113,7 @@ export class UsageService {
         FROM "Conversation" c
        WHERE c."tenantId" = ${tenantId}
          AND c.kind = 'customer'
+         AND c."intakePending" = false
          AND c.status = 'open'
          AND (
            SELECT m.role::text
@@ -143,6 +149,7 @@ export class UsageService {
           JOIN "Conversation" c ON c.id = m."conversationId"
          WHERE m."tenantId" = ${tenantId}
            AND c.kind = 'customer'
+           AND c."intakePending" = false
            AND m."createdAt" >= ${since}
         WINDOW w AS (PARTITION BY m."conversationId" ORDER BY m."createdAt")
       )

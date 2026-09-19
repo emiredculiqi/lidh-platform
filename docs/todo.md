@@ -249,8 +249,11 @@ privacy regime, and item 7 cannot state a retention period until one exists.
 
 **Fix direction:** pick a period per data class (conversation content, contacts,
 events, usage rollups) — content is the one that matters. Then build the purge.
-Note there is no scheduler at all today, so this needs a runner (a Fly scheduled
-machine, or a cron-triggered endpoint) as well as the delete logic. Archived and
+**Update 2026-09-19:** a first scheduled job now exists — `IntakePurgeService`
+(ADR-021), an hourly in-process timer that deletes abandoned web intakes after
+7 days. It is adequate for one machine and idempotent, but the retention purge
+should move it to a real scheduler (Fly scheduled machine or cron-triggered
+endpoint) rather than add a second timer. Archived and
 deleted tenants need a defined disposal path too (ADR-008 covers the tenant
 lifecycle but not the data's).
 

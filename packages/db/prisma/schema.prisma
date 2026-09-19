@@ -508,6 +508,12 @@ model Conversation {
   kind             ConversationKind   @default(customer)
   status           ConversationStatus @default(open)
   aiOverride       ConversationAiOverride? // null = inherit tenant responder setting
+  // Web intake gate (ADR-021): true from creation until the visitor has given a
+  // name and email. While true the conversation is invisible to the business —
+  // excluded from the inbox, unread counts, usage and notifications — and the
+  // agent does not answer questions. Never true for WhatsApp (phone is the
+  // identity) or preview conversations. Purged after 7 days if never completed.
+  intakePending    Boolean            @default(false)
   assignedToUserId String?
   // Locale pinned at thread start (from widget locale, WA user lang, IG locale).
   // Falls back to Tenant.defaultLocale at write time if null.
@@ -533,6 +539,7 @@ model Conversation {
   @@index([tenantId, status])
   @@index([tenantId, kind, lastMsgAt]) // inbox query: WHERE kind='customer'
   @@index([contactId])
+  @@index([intakePending, lastMsgAt]) // purge of abandoned intakes
 }
 
 model Message {
