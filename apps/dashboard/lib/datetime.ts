@@ -52,3 +52,22 @@ export function formatTime(value: string | Date | number): string {
   const { h, mi } = parts(value);
   return `${h}:${mi}`;
 }
+
+/**
+ * Compact duration for KPI tiles: "45 s", "4 min", "1 h 12 min", "2 d 3 h".
+ * Unit abbreviations are shared by Albanian and English, so this needs no
+ * locale and can render in a server component.
+ */
+export function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+  const s = Math.round(seconds);
+  if (s < 60) return `${s} s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  if (h < 24) return rm ? `${h} h ${rm} min` : `${h} h`;
+  const d = Math.floor(h / 24);
+  const rh = h % 24;
+  return rh ? `${d} d ${rh} h` : `${d} d`;
+}

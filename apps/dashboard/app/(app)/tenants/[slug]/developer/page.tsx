@@ -2,7 +2,9 @@ import { T } from "@/components/T";
 import { CopyBlock } from "@/components/CopyBlock";
 import { Card } from "@/components/ui/Card";
 import { ConnectWhatsApp } from "@/components/ConnectWhatsApp";
+import Link from "next/link";
 import { api, type ChannelStatus } from "@/lib/api-server";
+import type { Tenant } from "@/lib/api-core";
 
 export const dynamic = "force-dynamic";
 
@@ -27,11 +29,19 @@ export default async function DeveloperPage({
 }) {
   const { slug } = await params;
 
-  // Current WhatsApp channel status (drives the Connect/Disconnect UI).
+  // Current WhatsApp channel status (drives the Connect/Disconnect UI) and the
+  // tenant's public page URL (moved here from the dashboard home — this is
+  // where a business comes to connect things, so the link and the embed code
+  // live together).
   let whatsapp: ChannelStatus | null = null;
+  let tenant: Tenant | null = null;
   try {
-    const channels = await api.getChannels(slug);
+    const [channels, t] = await Promise.all([
+      api.getChannels(slug),
+      api.getTenant(slug),
+    ]);
     whatsapp = channels.find((c) => c.kind === "whatsapp") ?? null;
+    tenant = t;
   } catch {
     whatsapp = null; // API unreachable → treat as not connected
   }
@@ -53,6 +63,35 @@ export default async function DeveloperPage({
 
   return (
     <div className="space-y-6">
+      {/* Public page — the shareable link customers can chat on without a widget */}
+      <Card className="bg-gradient-to-br from-brand-deep to-[#071E4F] text-white">
+        <div className="text-[12px] font-semibold text-brand-sky">
+          <T al="✦ FAQJA JOTE" en="✦ YOUR PAGE" />
+        </div>
+        <p className="mt-2 text-[13px] text-[#CADBF5]">
+          <T
+            al="Ndaje këtë lidhje kudo — klientët mund të shkruajnë pa pasur nevojë për widget."
+            en="Share this link anywhere — customers can message you without needing the widget."
+          />
+        </p>
+        {tenant?.funnelUrl ? (
+          <a
+            href={tenant.funnelUrl}
+            target="_blank"
+            rel="noopener"
+            className="mt-3 block break-all rounded-lg bg-white/10 px-3 py-2 text-[12.5px] font-medium text-white hover:bg-white/15"
+          >
+            {tenant.funnelUrl.replace(/^https?:\/\//, "")}
+          </a>
+        ) : null}
+        <Link
+          href="#embed"
+          className="mt-3 inline-block text-[12.5px] font-semibold text-brand-sky hover:underline"
+        >
+          <T al="Kodi i widget-it është më poshtë ↓" en="Widget code is below ↓" />
+        </Link>
+      </Card>
+
       {/* Channels */}
       <Card>
         <h3 className="text-[15px] font-bold text-brand-deep">
@@ -90,7 +129,7 @@ export default async function DeveloperPage({
 
       {/* Embed code */}
       <Card>
-        <h3 className="text-[15px] font-bold text-brand-deep">
+        <h3 id="embed" className="text-[15px] font-bold text-brand-deep">
           <T al="Kodi i integrimit" en="Embed code" />
         </h3>
         <p className="mb-3 mt-1 max-w-2xl text-sm text-slate-500">

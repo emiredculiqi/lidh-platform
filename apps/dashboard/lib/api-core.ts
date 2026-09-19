@@ -216,6 +216,10 @@ export type Usage = {
   handoffs: number;
   tokensIn: number;
   tokensOut: number;
+  // Live: open customer conversations whose latest message is the customer's.
+  awaitingReply: number;
+  // This month, customer message → reply; null until something was answered.
+  avgResponseSeconds: number | null;
 };
 
 export type ChannelStatus = {

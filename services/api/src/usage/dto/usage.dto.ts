@@ -25,4 +25,21 @@ export class UsageDto {
 
   @ApiProperty({ description: "Output tokens this month (AI cost signal)." })
   tokensOut!: number;
+
+  @ApiProperty({
+    description:
+      "Open customer conversations whose most recent message is from the " +
+      "customer — i.e. someone is waiting on the business right now. Not " +
+      "month-scoped; it is a live figure.",
+  })
+  awaitingReply!: number;
+
+  @ApiProperty({
+    description:
+      "Average seconds from a customer message to the business's reply " +
+      "(agent or human), over this month. Null when nothing has been " +
+      "answered yet.",
+    nullable: true,
+  })
+  avgResponseSeconds!: number | null;
 }
