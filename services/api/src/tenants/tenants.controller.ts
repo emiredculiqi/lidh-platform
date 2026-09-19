@@ -16,6 +16,7 @@ import {
 import {
   IsArray,
   IsEmail,
+  IsIn,
   IsInt,
   IsString,
   Max,
@@ -26,11 +27,41 @@ import { ApiProperty } from "@nestjs/swagger";
 import { Public } from "../common/auth/public.decorator";
 import { PlatformAdminOnly } from "../common/auth/platform-admin.decorator";
 import { TenantsService } from "./tenants.service";
+import type { ResponderSettings, ResponderWindow } from "./responder";
 import { CreateTenantDto } from "./dto/create-tenant.dto";
 import {
   FunnelResolveResponseDto,
   TenantResponseDto,
 } from "./dto/tenant-response.dto";
+
+/** Who answers by default for this business (ADR-020). */
+class ResponderSettingsDto {
+  @ApiProperty({
+    enum: ["human", "ai", "schedule"],
+    description:
+      "human = the team answers (default); ai = the assistant answers " +
+      "everything; schedule = the assistant answers inside the weekly windows.",
+  })
+  @IsIn(["human", "ai", "schedule"])
+  mode!: "human" | "ai" | "schedule";
+
+  @ApiProperty({ example: "Europe/Tirane", description: "IANA zone the windows are in." })
+  @IsString()
+  @MinLength(1)
+  timezone!: string;
+
+  @ApiProperty({
+    description:
+      "Weekly windows during which the assistant answers (mode = schedule). " +
+      "days: ISO weekdays 1=Mon…7=Sun; from/to: HH:MM local; to <= from wraps midnight.",
+    example: [
+      { days: [1, 2, 3, 4, 5], from: "18:00", to: "09:00" },
+      { days: [6, 7], from: "00:00", to: "24:00" },
+    ],
+  })
+  @IsArray()
+  windows!: ResponderWindow[];
+}
 
 class GrantPlanDto {
   @ApiProperty({
@@ -129,6 +160,32 @@ export class TenantsController {
     @Param("slug") slug: string,
   ): Promise<{ allowedOrigins: string[] }> {
     return this.tenants.getWebOrigins(slug);
+  }
+
+  @Get("tenants/:slug/responder")
+  @ApiOperation({
+    summary: "Who answers by default for this business",
+    description:
+      "The responder setting: human (default), ai, or a weekly schedule. " +
+      "Absent settings resolve to human. Any member of the business may read.",
+  })
+  getResponder(@Param("slug") slug: string): Promise<ResponderSettings> {
+    return this.tenants.getResponder(slug);
+  }
+
+  @Put("tenants/:slug/responder")
+  @ApiOperation({
+    summary: "Set who answers by default (owner/admin)",
+    description:
+      "Replaces the responder setting. Windows are validated (weekday 1–7, " +
+      "HH:MM, non-empty); the timezone must be a real IANA zone. Takes " +
+      "effect on the next inbound message — nothing is restarted.",
+  })
+  setResponder(
+    @Param("slug") slug: string,
+    @Body() dto: ResponderSettingsDto,
+  ): Promise<ResponderSettings> {
+    return this.tenants.setResponder(slug, dto);
   }
 
   @Put("tenants/:slug/web-origins")

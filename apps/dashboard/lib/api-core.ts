@@ -54,15 +54,21 @@ export type KnowledgeSource = {
   _count?: { chunks: number };
 };
 
+// Who answers a thread. `aiOverride` is the per-thread manual choice (null =
+// inherit the business setting); `aiEffective` is the resolved answer now.
+export type Responder = "human" | "ai";
+
 export type ConversationListItem = {
   id: string;
   channelKind: string;
   status: string;
-  aiPaused: boolean;
+  aiOverride: Responder | null;
+  aiEffective: Responder;
   locale: string | null;
   contactName: string | null;
   contactPhone: string | null;
   contactEmail: string | null;
+  contactStage: ContactStage;
   // "user" = customer spoke last → waiting on the business.
   lastMessageRole: string | null;
   lastMessagePreview: string;
@@ -119,7 +125,10 @@ export type Thread = {
   id: string;
   channelKind: string;
   status: string;
-  aiPaused: boolean;
+  aiOverride: Responder | null;
+  aiEffective: Responder;
+  // What the business setting resolves to right now, ignoring the override.
+  aiDefault: Responder;
   locale: string | null;
   contactId: string;
   contactName: string | null;
@@ -132,6 +141,15 @@ export type Thread = {
     toolName: string | null;
     createdAt: string;
   }[];
+};
+
+// Business-level responder setting (Tenant.settings.responder, ADR-020).
+export type ResponderMode = "human" | "ai" | "schedule";
+export type ResponderWindow = { days: number[]; from: string; to: string };
+export type ResponderSettings = {
+  mode: ResponderMode;
+  timezone: string;
+  windows: ResponderWindow[];
 };
 
 // Where a contact stands with the business (Contact.stage). Fixed set.
@@ -361,8 +379,15 @@ export function makeApi(t: Transport) {
     listConversations: (slug: string) =>
       t.get<ConversationListItem[]>(`/conversations?tenantSlug=${slug}`),
     getThread: (id: string) => t.get<Thread>(`/conversations/${id}`),
-    setConversationAi: (id: string, paused: boolean) =>
-      t.post<{ aiPaused: boolean }>(`/conversations/${id}/ai`, { paused }),
+    setConversationResponder: (id: string, mode: Responder | "inherit") =>
+      t.post<{ aiOverride: Responder | null; aiEffective: Responder }>(
+        `/conversations/${id}/ai`,
+        { mode },
+      ),
+    getResponder: (slug: string) =>
+      t.get<ResponderSettings>(`/tenants/${slug}/responder`),
+    setResponder: (slug: string, body: ResponderSettings) =>
+      t.put<ResponderSettings>(`/tenants/${slug}/responder`, body),
     replyToConversation: (id: string, text: string) =>
       t.post<{ ok: true }>(`/conversations/${id}/reply`, { text }),
     markConversationRead: (id: string) =>

@@ -10,13 +10,14 @@ import type { Prisma } from "@lidh/db";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { StorageService } from "../common/storage/storage.service";
 import { TenantContextService } from "../common/tenant-context/tenant-context.service";
-import { assertCanAccessTenant } from "../common/auth/access";
+import { assertCanAccessTenant, assertTenantRole } from "../common/auth/access";
 import type { CreateTenantDto } from "./dto/create-tenant.dto";
 import type {
   FunnelResolveResponseDto,
   TenantResponseDto,
 } from "./dto/tenant-response.dto";
 import { loadTenantEntitlements, resolveEntitlements } from "./entitlements";
+import { readResponderSettings, type ResponderSettings } from "./responder";
 
 // Read at call-time, NOT module top-level: @nestjs/config loads .env during
 // bootstrap, after this module is imported. A top-level const captures undef.
@@ -421,6 +422,75 @@ export class TenantsService {
    * Shared by createTenant and setOwner.
    */
   /** Read the web widget's allowed origins (owner/admin of this tenant). */
+  /** The business's responder setting, defaults applied (absent → human). */
+  async getResponder(slug: string): Promise<ResponderSettings> {
+    const db = this.prisma.client;
+    const tenant = await db.tenant.findUnique({
+      where: { slug },
+      select: { id: true, settings: true },
+    });
+    if (!tenant) throw new NotFoundException("tenant_not_found");
+    assertCanAccessTenant(this.ctx.get(), tenant.id);
+    return readResponderSettings(tenant.settings);
+  }
+
+  /**
+   * Replace the responder setting (owner/admin). Validation is strict here
+   * because the runtime reader is lenient by design — it drops bad windows
+   * silently so a broken row never throws on a customer message. Bad input
+   * must therefore be refused at the door, not tolerated into the DB.
+   */
+  async setResponder(
+    slug: string,
+    input: ResponderSettings,
+  ): Promise<ResponderSettings> {
+    const db = this.prisma.client;
+    const tenant = await db.tenant.findUnique({
+      where: { slug },
+      select: { id: true, settings: true },
+    });
+    if (!tenant) throw new NotFoundException("tenant_not_found");
+    assertTenantRole(this.ctx.get(), tenant.id, ["owner", "admin"]);
+
+    // Timezone must be one this runtime can evaluate, or the schedule would
+    // silently fall back to UTC and answer at the wrong hours.
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: input.timezone }).format(new Date());
+    } catch {
+      throw new BadRequestException("invalid_timezone");
+    }
+    // Round-trip through the lenient reader and refuse if it had to drop any
+    // window — that means the client sent something malformed.
+    const cleaned = readResponderSettings({ responder: input });
+    if (cleaned.windows.length !== input.windows.length) {
+      throw new BadRequestException("invalid_window");
+    }
+    if (cleaned.mode === "schedule" && cleaned.windows.length === 0) {
+      throw new BadRequestException("schedule_needs_windows");
+    }
+
+    const settings =
+      tenant.settings && typeof tenant.settings === "object"
+        ? (tenant.settings as Record<string, unknown>)
+        : {};
+    await db.tenant.update({
+      where: { id: tenant.id },
+      data: {
+        settings: {
+          ...settings,
+          responder: {
+            mode: cleaned.mode,
+            timezone: cleaned.timezone,
+            windows: cleaned.windows,
+          },
+          // Plain data, but ResponderWindow is an interface (no index
+          // signature), so TS won't map it onto Prisma's JSON type directly.
+        } as unknown as Prisma.InputJsonValue,
+      },
+    });
+    return cleaned;
+  }
+
   async getWebOrigins(slug: string): Promise<{ allowedOrigins: string[] }> {
     const db = this.prisma.client;
     const tenant = await db.tenant.findUnique({ where: { slug } });

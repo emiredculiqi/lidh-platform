@@ -48,11 +48,17 @@ export default async function ThreadPage({
             <div className="mt-0.5 flex items-center gap-2">
               <ChannelBadge kind={thread.channelKind} />
               <StagePill stage={thread.contactStage} />
-              {thread.aiPaused ? (
-                <span className="text-[11px] font-medium text-amber-600">
-                  <T al="AI i pezulluar" en="AI paused" />
-                </span>
-              ) : null}
+              <span
+                className={`text-[11px] font-medium ${
+                  thread.aiEffective === "ai" ? "text-emerald-600" : "text-slate-500"
+                }`}
+              >
+                {thread.aiEffective === "ai" ? (
+                  <T al="Përgjigjet asistenti" en="Assistant answering" />
+                ) : (
+                  <T al="Përgjigjet ekipi" en="Team answering" />
+                )}
+              </span>
             </div>
           </div>
         </div>
@@ -98,7 +104,12 @@ export default async function ThreadPage({
           })}
         </div>
 
-        <TakeoverBar conversationId={thread.id} aiPaused={thread.aiPaused} />
+        <TakeoverBar
+          conversationId={thread.id}
+          aiOverride={thread.aiOverride}
+          aiEffective={thread.aiEffective}
+          aiDefault={thread.aiDefault}
+        />
       </div>
 
       <ContactPanel slug={slug} thread={thread} />

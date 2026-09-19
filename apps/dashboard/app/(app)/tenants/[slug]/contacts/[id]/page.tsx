@@ -4,7 +4,7 @@ import { api } from "@/lib/api-server";
 import { T } from "@/components/T";
 import { Card } from "@/components/ui/Card";
 import { ChannelBadge } from "@/components/ui/ChannelBadge";
-import { StatusPill } from "@/components/ui/StatusPill";
+import { StagePill } from "@/components/contacts/Stage";
 import { formatDateTime } from "@/lib/datetime";
 import { StageSelect } from "@/components/contacts/Stage";
 
@@ -111,7 +111,7 @@ export default async function ContactDetailPage({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <ChannelBadge kind={cv.channelKind} />
-                        <StatusPill status={cv.status} />
+                        <StagePill stage={c.stage} />
                       </div>
                       <p className="mt-1 truncate text-[13px] text-slate-500">
                         {cv.lastMessagePreview || "—"}

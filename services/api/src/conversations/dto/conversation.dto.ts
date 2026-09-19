@@ -5,7 +5,10 @@ export class ConversationListItemDto {
   @ApiProperty({ example: "web", enum: ["web", "whatsapp", "instagram"] })
   channelKind!: string;
   @ApiProperty({ example: "open" }) status!: string;
-  @ApiProperty({ example: false }) aiPaused!: boolean;
+  @ApiProperty({ example: null, nullable: true, enum: ["human", "ai"] })
+  aiOverride!: "human" | "ai" | null;
+  @ApiProperty({ example: "human", enum: ["human", "ai"], description: "Who answers this thread right now." })
+  aiEffective!: "human" | "ai";
   @ApiProperty({ example: "al", nullable: true, type: String })
   locale!: string | null;
   @ApiProperty({ example: "Ana B.", nullable: true, type: String })
@@ -14,6 +17,8 @@ export class ConversationListItemDto {
   contactPhone!: string | null;
   @ApiProperty({ example: "ana@example.com", nullable: true, type: String })
   contactEmail!: string | null;
+  @ApiProperty({ example: "new", enum: ["new", "lead", "client", "not_a_fit"] })
+  contactStage!: string;
   @ApiProperty({
     example: "user",
     nullable: true,
@@ -59,7 +64,12 @@ export class ThreadDto {
   @ApiProperty({ example: "clx_conv1" }) id!: string;
   @ApiProperty({ example: "web" }) channelKind!: string;
   @ApiProperty({ example: "open" }) status!: string;
-  @ApiProperty({ example: false }) aiPaused!: boolean;
+  @ApiProperty({ example: null, nullable: true, enum: ["human", "ai"] })
+  aiOverride!: "human" | "ai" | null;
+  @ApiProperty({ example: "human", enum: ["human", "ai"], description: "Who answers this thread right now." })
+  aiEffective!: "human" | "ai";
+  @ApiProperty({ example: "human", enum: ["human", "ai"], description: "What the business setting resolves to right now, ignoring the override." })
+  aiDefault!: "human" | "ai";
   @ApiProperty({ example: "al", nullable: true, type: String })
   locale!: string | null;
   @ApiProperty({ example: "clx_contact1" }) contactId!: string;

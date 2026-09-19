@@ -27,6 +27,10 @@ import type {
   HistoryChunk,
 } from "./meta-webhook.parser";
 import { loadTenantEntitlements } from "../../tenants/entitlements";
+import {
+  effectiveResponder,
+  readResponderSettings,
+} from "../../tenants/responder";
 
 const ALL_TOOLS: ToolName[] = ["capture_lead", "request_human_handoff"];
 
@@ -287,12 +291,16 @@ export class WhatsappService {
         content: m.contentText as string,
       }));
 
-    // Human takeover: the AI is paused for this thread. The inbound is already
-    // persisted (and pushed live); an operator replies from the dashboard
-    // (delivered back to WhatsApp in Phase 5). Do NOT run the agent — but still
-    // silently capture contact details the customer volunteers. (Parity with
-    // the web path, chat.service.ts.)
-    if (conversation.aiPaused) {
+    // Who answers this thread right now — same resolver as the web path
+    // (ADR-020): the thread's own override, else the business's responder
+    // setting. If it's a human, the inbound is already persisted (and pushed
+    // live) and an operator replies from the dashboard. Do NOT run the agent —
+    // but still silently capture contact details the customer volunteers.
+    const responder = effectiveResponder(
+      readResponderSettings(tenant.settings),
+      conversation.aiOverride,
+    );
+    if (responder === "human") {
       void this.captureDuringTakeover(
         tenant.id,
         conversation.id,

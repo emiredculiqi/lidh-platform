@@ -6,7 +6,7 @@ import {
   ApiQuery,
   ApiTags,
 } from "@nestjs/swagger";
-import { IsBoolean, IsString, MaxLength, MinLength } from "class-validator";
+import { IsIn, IsString, MaxLength, MinLength } from "class-validator";
 import { ConversationsService } from "./conversations.service";
 import {
   ConversationListItemDto,
@@ -14,10 +14,19 @@ import {
   UnreadSummaryDto,
 } from "./dto/conversation.dto";
 
-class SetAiDto {
-  @ApiProperty({ description: "true = pause AI (human takes over)." })
-  @IsBoolean()
-  paused!: boolean;
+const RESPONDER_MODES = ["human", "ai", "inherit"] as const;
+type ResponderChoice = (typeof RESPONDER_MODES)[number];
+
+class SetResponderDto {
+  @ApiProperty({
+    enum: RESPONDER_MODES,
+    description:
+      "human = take over (assistant off for this thread); ai = hand the thread " +
+      "to the assistant; inherit = clear the override and follow the business " +
+      "setting (human by default, or the schedule).",
+  })
+  @IsIn(RESPONDER_MODES)
+  mode!: ResponderChoice;
 }
 
 class ReplyDto {
@@ -76,13 +85,17 @@ export class ConversationsController {
 
   @Post(":id/ai")
   @ApiOperation({
-    summary: "Pause/resume the AI on a conversation (human takeover)",
+    summary: "Set who answers this conversation",
+    description:
+      "Per-thread override of the business's responder setting. A manual " +
+      "override wins over the schedule until cleared with `inherit`.",
   })
-  setAi(
+  @ApiOkResponse({ schema: { example: { aiOverride: "human", aiEffective: "human" } } })
+  setResponder(
     @Param("id") id: string,
-    @Body() dto: SetAiDto,
-  ): Promise<{ aiPaused: boolean }> {
-    return this.conversations.setAi(id, dto.paused);
+    @Body() dto: SetResponderDto,
+  ): Promise<{ aiOverride: "human" | "ai" | null; aiEffective: "human" | "ai" }> {
+    return this.conversations.setResponder(id, dto.mode);
   }
 
   @Post(":id/reply")

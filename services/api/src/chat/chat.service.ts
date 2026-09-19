@@ -14,6 +14,7 @@ import { LiveService } from "../common/live/live.service";
 import { RetrievalService, buildRetrievalQuery } from "./retrieval.service";
 import type { ChatWebRequestDto } from "./dto/chat-web-request.dto";
 import { loadTenantEntitlements } from "../tenants/entitlements";
+import { effectiveResponder, readResponderSettings } from "../tenants/responder";
 
 /** Client-facing stream events (controller maps these to SSE). `usage` is
  *  handled internally for token billing and never reaches the client. */
@@ -206,10 +207,16 @@ export class ChatService {
       preview: dto.message.slice(0, 120),
     });
 
-    // Human takeover: the AI is paused for this conversation. Store the
-    // visitor's message (done above) and stop — a human replies from the
-    // dashboard, delivered to the widget via its receive-stream.
-    if (conversation.aiPaused) {
+    // Who answers this thread right now: the conversation's own override if a
+    // human took over (or handed it to the assistant), else the business's
+    // responder setting — human by default, AI always, or AI on a schedule
+    // (ADR-020). If it's a human, store the visitor's message (done above) and
+    // stop — they reply from the dashboard, delivered via the receive-stream.
+    const responder = effectiveResponder(
+      readResponderSettings(tenant.settings),
+      conversation.aiOverride,
+    );
+    if (responder === "human") {
       // The agent loop won't run, but still register contact details the
       // visitor provides — gated extraction, persisted silently in the
       // background (no reply, no banner). Fire-and-forget so it adds no

@@ -948,3 +948,76 @@ isolation and the audit trail apply.
   presets (ADR-010).
 - `docs/diagrams.md` remains an M1 snapshot and never showed the vertical; it is
   stale for other reasons and is tracked separately.
+
+## ADR-020 — Human answers by default; the assistant is a per-business setting with a schedule
+
+**Status:** Accepted · 2026-09-19. Lands ADR-018 Decision 2 in the code: until
+now `Conversation.aiPaused @default(false)` meant the assistant answered every new
+conversation unless someone stopped it — the opposite of "Level 0 Off is the
+default".
+
+- **Context:** Owners in the Albanian market buy a shared inbox and are wary of
+  a bot answering in their name. The product now sells human control first and
+  the assistant as something the owner switches on — always, or only when nobody
+  is there (evenings, weekends). The old per-conversation boolean could not
+  distinguish "inherited from the business" from "a person deliberately took
+  over", so a schedule had nothing to reason about.
+- **Technical term:** *a three-layer responder resolution — per-thread override,
+  then business mode, then a weekly window in the business's timezone — resolved
+  by a pure function on every inbound message, in both runtimes.*
+- **Plain:** Each business chooses who answers: the team (default), the
+  assistant, or the assistant only during set hours. Inside any single
+  conversation a person can still take over or hand the thread to the
+  assistant, and that choice sticks until they undo it.
+
+### Decision 1 — One pure resolver, mirrored on `entitlements.ts`
+
+`tenants/responder.ts`: `readResponderSettings(Tenant.settings)` →
+`resolveResponder(settings, now)` → `effectiveResponder(settings, override,
+now)`. No DB, injectable clock, Vitest-covered (timezones, overnight windows,
+weekends, override precedence). Both `chat.service` and `whatsapp.service` call
+it where they used to read `aiPaused`; the dashboard reads the same result.
+
+- **Why derived, not stored:** the same reason as ADR-017 — a stored "AI is on"
+  flag flipped by a scheduler is stale between runs and silent when the
+  scheduler fails. Evaluating at message time can never be either.
+
+### Decision 2 — The manual override wins over the schedule
+
+`Conversation.aiOverride` (`human` | `ai` | null) replaces `aiPaused`. Null
+inherits the business setting. A takeover sets `human` and stays until an
+operator clears it — the schedule only governs threads nobody touched.
+
+- **Why:** an operator mid-conversation must never have the assistant resume
+  under them because the clock hit 18:00. Predictability for the person at the
+  keyboard beats strictness of the schedule.
+
+### Decision 3 — Existing businesses keep the assistant on
+
+The migration backfills `responder.mode = "ai"` for every tenant that exists on
+deploy, so nothing changes for current customers. Only businesses created
+afterwards start on human. Existing `aiPaused = true` rows become explicit
+`human` overrides, so no takeover is lost.
+
+### Decision 4 — The suggested schedule is the after-hours wedge
+
+When a business first switches to `schedule`, the form is pre-filled with
+weekdays 18:00→09:00 and the whole weekend, in `Europe/Tirane`. That is the
+ADR-018 wedge in concrete form: humans during the working day, the assistant
+when the alternative is silence until morning.
+
+### Consequences
+
+- New Settings page (`/tenants/:slug/settings`) and sidebar entry; the setting
+  is owner/admin-editable via `PUT /v1/tenants/:slug/responder`.
+- `POST /v1/conversations/:id/ai` now takes `{ mode: human | ai | inherit }`
+  and returns the override plus the resolved responder.
+- The thread footer shows who is answering and offers "take over", "let the
+  assistant answer", and — when an override exists — "back to business
+  default". The inbox no longer filters by AI/Human (ADR-018); it filters by
+  channel and by who is waiting.
+- Writes are validated strictly (real IANA zone, well-formed windows) precisely
+  because the runtime reader is lenient by design — it drops bad windows rather
+  than throw on a customer message, so bad data must be refused at the door.
+- The ladder's Level 1 ("Suggest": drafts a human sends) is still not built;
+  this ADR covers Levels 0 and 3 plus a timer. Suggest remains the next rung.

@@ -114,6 +114,16 @@ enum ContactStage {
   not_a_fit
 }
 
+// Per-conversation override of who answers. NULL = inherit the business's
+// responder setting (Tenant.settings.responder — human by default, AI always,
+// or AI on a weekly schedule). A human taking over sets `human`; an operator
+// handing a thread to the assistant sets `ai`. A manual override wins over the
+// schedule until someone clears it — a takeover never silently ends at 18:00.
+enum ConversationAiOverride {
+  human
+  ai
+}
+
 // Tag on Conversation. Lets us reuse the same agent runtime + tables for
 // real customer chats AND internal preview/test sessions, while keeping the
 // SMB inbox clean (filtered to `kind = customer` by default) and excluding
@@ -497,7 +507,7 @@ model Conversation {
   // preview  = platform admin (you) or tenant owner/admin testing the agent.
   kind             ConversationKind   @default(customer)
   status           ConversationStatus @default(open)
-  aiPaused         Boolean            @default(false) // human takeover toggle
+  aiOverride       ConversationAiOverride? // null = inherit tenant responder setting
   assignedToUserId String?
   // Locale pinned at thread start (from widget locale, WA user lang, IG locale).
   // Falls back to Tenant.defaultLocale at write time if null.

@@ -18,6 +18,7 @@ const NAV: Item[] = [
   { id: "leads", suffix: "/leads", al: "Klientë", en: "Leads", icon: "M16 11a4 4 0 10-8 0 4 4 0 008 0zM4 21a8 8 0 0116 0" },
   { id: "developer", suffix: "/developer", al: "Integrime", en: "Integrations", icon: "M10 13a5 5 0 007 0l3-3a5 5 0 00-7-7l-1 1m-2 6a5 5 0 00-7 0l-3 3a5 5 0 007 7l1-1" },
   { id: "test", suffix: "/test", al: "Testo agjentin", en: "Test agent", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" },
+  { id: "settings", suffix: "/settings", al: "Cilësimet", en: "Settings", icon: "M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3a7.4 7.4 0 00-.1-1l2-1.6-2-3.4-2.4 1a7.6 7.6 0 00-1.7-1l-.4-2.6H9.2l-.4 2.6a7.6 7.6 0 00-1.7 1l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 000 2l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 001.7 1l.4 2.6h4.6l.4-2.6a7.6 7.6 0 001.7-1l2.4 1 2-3.4-2-1.6c.1-.3.1-.7.1-1z" },
 ];
 
 // Team management — only shown to owner/admin (or platform admin).

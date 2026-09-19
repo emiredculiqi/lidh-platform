@@ -4,44 +4,65 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useT } from "@/lib/i18n";
+import type { Responder } from "@/lib/api-core";
 
-/** Footer of a conversation: take over (pause AI), reply as a human, or hand
- *  back to the AI. */
+/**
+ * Footer of a conversation: who answers this thread, and the reply box.
+ *
+ * Three states, driven by the resolved responder (ADR-020):
+ *   - a human answers → reply box + "let the assistant answer" link
+ *   - the assistant answers → "take over" button
+ *   - either, with a manual override set → an extra "back to business default"
+ *     link, so an operator can hand a thread back to the schedule.
+ * Human is the default for new businesses; the assistant is opt-in.
+ */
 export function TakeoverBar({
   conversationId,
-  aiPaused,
+  aiOverride,
+  aiEffective,
+  aiDefault,
 }: {
   conversationId: string;
-  aiPaused: boolean;
+  aiOverride: Responder | null;
+  aiEffective: Responder;
+  aiDefault: Responder;
 }) {
   const router = useRouter();
-  const [paused, setPaused] = useState(aiPaused);
+  const [override, setOverride] = useState<Responder | null>(aiOverride);
+  const [effective, setEffective] = useState<Responder>(aiEffective);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
 
   const t = useT({
     al: {
       takeover: "Merr përsipër bisedën",
-      replying: "Po përgjigjesh ti — AI është në pauzë",
-      giveBack: "Kthe te AI",
+      youAnswer: "Përgjigjesh ti",
+      youAnswerOverride: "Përgjigjesh ti — asistenti është ndalur për këtë bisedë",
+      aiAnswers: "Asistenti po përgjigjet",
+      letAi: "Lëre asistentin të përgjigjet",
+      backToDefault: aiDefault === "ai" ? "Kthe te parazgjedhja (asistenti)" : "Kthe te parazgjedhja (ekipi)",
       placeholder: "Shkruaj përgjigjen…",
       send: "Dërgo",
     },
     en: {
       takeover: "Take over the conversation",
-      replying: "You're replying — AI is paused",
-      giveBack: "Hand back to AI",
+      youAnswer: "You're answering",
+      youAnswerOverride: "You're answering — the assistant is off for this thread",
+      aiAnswers: "The assistant is answering",
+      letAi: "Let the assistant answer",
+      backToDefault: aiDefault === "ai" ? "Back to business default (assistant)" : "Back to business default (team)",
       placeholder: "Type your reply…",
       send: "Send",
     },
   });
 
-  async function toggle(next: boolean) {
+  async function choose(mode: Responder | "inherit") {
     if (busy) return;
     setBusy(true);
     try {
-      await api.setConversationAi(conversationId, next);
-      setPaused(next);
+      const r = await api.setConversationResponder(conversationId, mode);
+      setOverride(r.aiOverride);
+      setEffective(r.aiEffective);
       router.refresh();
     } finally {
       setBusy(false);
@@ -61,11 +82,29 @@ export function TakeoverBar({
     }
   }
 
-  if (!paused) {
+  const backToDefault =
+    override !== null ? (
+      <button
+        onClick={() => choose("inherit")}
+        disabled={busy}
+        className="text-[12px] font-medium text-slate-500 hover:underline disabled:opacity-50"
+      >
+        {t.backToDefault}
+      </button>
+    ) : null;
+
+  if (effective === "ai") {
     return (
       <div className="flex-none border-t border-slate-200 bg-white px-5 py-3">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="flex items-center gap-1.5 text-[12px] font-semibold text-emerald-600">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            {t.aiAnswers}
+          </span>
+          {backToDefault}
+        </div>
         <button
-          onClick={() => toggle(true)}
+          onClick={() => choose("human")}
           disabled={busy}
           className="w-full rounded-xl bg-brand-blue px-4 py-2.5 text-[13.5px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
         >
@@ -77,18 +116,21 @@ export function TakeoverBar({
 
   return (
     <div className="flex-none border-t border-slate-200 bg-white px-5 py-3">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-amber-600">
-          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-          {t.replying}
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="flex items-center gap-1.5 text-[12px] font-semibold text-brand-deep">
+          <span className="h-1.5 w-1.5 rounded-full bg-brand-blue" />
+          {override === "human" ? t.youAnswerOverride : t.youAnswer}
         </span>
-        <button
-          onClick={() => toggle(false)}
-          disabled={busy}
-          className="text-[12px] font-semibold text-brand-blue hover:underline disabled:opacity-50"
-        >
-          {t.giveBack}
-        </button>
+        <span className="flex items-center gap-3">
+          {backToDefault}
+          <button
+            onClick={() => choose("ai")}
+            disabled={busy}
+            className="text-[12px] font-semibold text-brand-blue hover:underline disabled:opacity-50"
+          >
+            {t.letAi}
+          </button>
+        </span>
       </div>
       <form
         onSubmit={(e) => {

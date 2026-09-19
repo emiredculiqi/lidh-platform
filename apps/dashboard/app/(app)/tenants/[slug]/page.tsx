@@ -5,7 +5,7 @@ import { T } from "@/components/T";
 import { Card } from "@/components/ui/Card";
 import { KpiStat } from "@/components/ui/KpiStat";
 import { ChannelBadge } from "@/components/ui/ChannelBadge";
-import { StatusPill } from "@/components/ui/StatusPill";
+import { StagePill } from "@/components/contacts/Stage";
 import { formatDateTime, formatDuration } from "@/lib/datetime";
 import { contactDisplayName, contactInitials } from "@/lib/contact-name";
 
@@ -107,7 +107,7 @@ export default async function DashboardPage({
                   </div>
                 </div>
                 <div className="flex flex-none flex-col items-end gap-1">
-                  <StatusPill status={c.status} />
+                  <StagePill stage={c.contactStage} />
                   <span className="text-[11px] text-slate-400">
                     {formatDateTime(c.lastMsgAt)}
                   </span>

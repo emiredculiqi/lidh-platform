@@ -8,6 +8,12 @@ import { TenantContextService } from "../common/tenant-context/tenant-context.se
 import { LiveService } from "../common/live/live.service";
 import { WhatsAppOutboundService } from "../channels/whatsapp/whatsapp-outbound.service";
 import { assertCanAccessTenant } from "../common/auth/access";
+import {
+  effectiveResponder,
+  readResponderSettings,
+  resolveResponder,
+  type Responder,
+} from "../tenants/responder";
 import type {
   ConversationListItemDto,
   ThreadDto,
@@ -25,34 +31,51 @@ export class ConversationsService {
     private readonly whatsAppOutbound: WhatsAppOutboundService,
   ) {}
 
-  /** Take over a conversation (pause the AI) or hand it back (resume). */
-  async setAi(id: string, paused: boolean): Promise<{ aiPaused: boolean }> {
+  /**
+   * Set who answers this thread: `human` (take over), `ai` (hand to the
+   * assistant), or `inherit` (clear the override; the business setting —
+   * human by default, or the schedule — decides again). A manual override
+   * wins over the schedule until cleared (ADR-020).
+   */
+  async setResponder(
+    id: string,
+    mode: "human" | "ai" | "inherit",
+  ): Promise<{ aiOverride: Responder | null; aiEffective: Responder }> {
     const db = this.prisma.client;
     const conv = await db.conversation.findUnique({
       where: { id },
-      select: { id: true, tenantId: true },
+      select: { id: true, tenantId: true, tenant: { select: { settings: true } } },
     });
     if (!conv) throw new NotFoundException("conversation_not_found");
     assertCanAccessTenant(this.ctx.get(), conv.tenantId);
     const userId = this.ctx.get().userId ?? null;
 
+    const aiOverride: Responder | null = mode === "inherit" ? null : mode;
     await db.conversation.update({
       where: { id },
-      data: { aiPaused: paused, assignedToUserId: paused ? userId : null },
+      data: {
+        aiOverride,
+        // Assignment follows a takeover; anything else releases it.
+        assignedToUserId: aiOverride === "human" ? userId : null,
+      },
     });
+    const aiEffective = effectiveResponder(
+      readResponderSettings(conv.tenant.settings),
+      aiOverride,
+    );
     await db.event.create({
       data: {
         tenantId: conv.tenantId,
         conversationId: id,
-        kind: paused ? "agent_paused" : "agent_resumed",
+        kind: aiEffective === "human" ? "agent_paused" : "agent_resumed",
       },
     });
     // Nudge other dashboard viewers to refresh.
     this.live.publish(conv.tenantId, {
-      type: paused ? "ai_paused" : "ai_resumed",
+      type: aiEffective === "human" ? "ai_paused" : "ai_resumed",
       conversationId: id,
     });
-    return { aiPaused: paused };
+    return { aiOverride, aiEffective };
   }
 
   /** A human agent sends a reply into a (taken-over) conversation. Stored as
@@ -121,7 +144,9 @@ export class ConversationsService {
         orderBy: { lastMsgAt: "desc" },
         take: 100,
         include: {
-          contact: { select: { name: true, phone: true, email: true } },
+          contact: {
+            select: { name: true, phone: true, email: true, stage: true },
+          },
           channel: { select: { kind: true } },
           messages: {
             orderBy: { createdAt: "desc" },
@@ -134,15 +159,19 @@ export class ConversationsService {
       this.unreadCounts(tenant.id),
     ]);
 
+    const responderSettings = readResponderSettings(tenant.settings);
+    const now = new Date();
     return rows.map((c) => ({
       id: c.id,
       channelKind: c.channel.kind,
       status: c.status,
-      aiPaused: c.aiPaused,
+      aiOverride: c.aiOverride,
+      aiEffective: effectiveResponder(responderSettings, c.aiOverride, now),
       locale: c.locale,
       contactName: c.contact.name,
       contactPhone: c.contact.phone,
       contactEmail: c.contact.email,
+      contactStage: c.contact.stage,
       // Who spoke last. "user" means the customer is waiting on the business —
       // the inbox's "Unanswered" filter and the dashboard's "Awaiting reply"
       // tile both key off this.
@@ -231,6 +260,7 @@ export class ConversationsService {
           select: { id: true, name: true, phone: true, email: true, stage: true },
         },
         channel: { select: { kind: true } },
+        tenant: { select: { settings: true } },
         messages: {
           orderBy: { createdAt: "asc" },
           select: {
@@ -244,11 +274,16 @@ export class ConversationsService {
     });
     if (!c) throw new NotFoundException("conversation_not_found");
     assertCanAccessTenant(this.ctx.get(), c.tenantId);
+    const responderSettings = readResponderSettings(c.tenant.settings);
     return {
       id: c.id,
       channelKind: c.channel.kind,
       status: c.status,
-      aiPaused: c.aiPaused,
+      aiOverride: c.aiOverride,
+      aiEffective: effectiveResponder(responderSettings, c.aiOverride),
+      // What the business setting resolves to right now, ignoring the
+      // override — lets the UI say "back to business default (human)".
+      aiDefault: resolveResponder(responderSettings),
       locale: c.locale,
       contactId: c.contact.id,
       contactName: c.contact.name,

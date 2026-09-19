@@ -54,6 +54,10 @@ following the existing files. Do not rely on `prisma migrate dev` to name them.
   by `tenantId` deliberately.
 - **Entitlements are derived, never materialized** (ADR-017). An expired trial
   *freezes* to read-only; it never locks the owner out.
+- **Who answers is derived the same way** (ADR-020). `tenants/responder.ts`
+  resolves per-thread override → business mode → weekly schedule on every
+  inbound message. **Human is the default**; never read `aiOverride` directly —
+  call `effectiveResponder`.
 - **Real-time is single-instance.** Live updates and human takeover use an
   in-process `EventEmitter` and the API runs as one Fly machine. Scaling to 2+
   needs Redis pub/sub first — this breaks silently, not loudly.
