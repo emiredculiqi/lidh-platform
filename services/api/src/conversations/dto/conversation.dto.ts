@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsBooleanString, IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsBoolean, IsBooleanString, IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 import { CONTACT_STAGES, type ContactStageValue } from "../../contacts/dto/contact.dto";
 import { LIST_CHANNELS, LIST_ONLY, type ListChannel, type ListOnly } from "../list-query";
 
@@ -37,6 +37,29 @@ export class ConversationListQueryDto {
   only?: ListOnly;
 }
 
+/** A team member, as shown next to a thread. */
+export class TeamMemberRefDto {
+  @ApiProperty({ example: "clx_user1" }) userId!: string;
+  @ApiProperty({ example: "Ana Berisha", nullable: true, type: String }) name!: string | null;
+}
+
+/** Someone currently on a thread (ADR-024 §3). */
+export class ViewerDto extends TeamMemberRefDto {
+  @ApiProperty({ example: false }) typing!: boolean;
+}
+
+export class PresenceDto {
+  @ApiPropertyOptional({ description: "true while the caller is typing a reply." })
+  @IsOptional()
+  @IsBoolean()
+  typing?: boolean;
+
+  @ApiPropertyOptional({ description: "true when the caller is leaving the thread." })
+  @IsOptional()
+  @IsBoolean()
+  leave?: boolean;
+}
+
 export class ConversationListItemDto {
   @ApiProperty({ example: "clx_conv1" }) id!: string;
   @ApiProperty({ example: "web", enum: ["web", "whatsapp", "instagram"] })
@@ -71,11 +94,19 @@ export class ConversationListItemDto {
   unreadCount!: number;
   @ApiProperty({ example: false, description: "Starred by the calling user (personal)." })
   starred!: boolean;
+  @ApiProperty({ type: TeamMemberRefDto, nullable: true, description: "Who wrote the latest message, when it was a human reply." })
+  lastReplyBy!: TeamMemberRefDto | null;
+  @ApiProperty({ type: TeamMemberRefDto, nullable: true, description: "Who took this thread over (set by takeover, cleared otherwise)." })
+  assignedTo!: TeamMemberRefDto | null;
+  @ApiProperty({ type: [ViewerDto], description: "Team members on this thread right now." })
+  viewers!: ViewerDto[];
   @ApiProperty({ example: "2026-05-16T13:00:00.000Z" }) lastMsgAt!: Date;
 }
 
 export class ConversationListDto {
   @ApiProperty({ type: [ConversationListItemDto] }) items!: ConversationListItemDto[];
+  @ApiProperty({ example: "clx_user1", nullable: true, type: String, description: "The caller's user id, so the UI can say \"you\"." })
+  viewerUserId!: string | null;
   @ApiProperty({
     example: 3,
     description:
@@ -133,5 +164,14 @@ export class ThreadDto {
   contactStage!: string;
   @ApiProperty({ example: false, description: "Starred by the calling user (personal)." })
   starred!: boolean;
+  @ApiProperty({ example: "clx_user1", nullable: true, type: String })
+  viewerUserId!: string | null;
+  @ApiProperty({ type: TeamMemberRefDto, nullable: true })
+  assignedTo!: TeamMemberRefDto | null;
+  @ApiProperty({ type: TeamMemberRefDto, nullable: true, description: "The last human reply's author, with `lastHumanReplyAt`." })
+  lastHumanReplyBy!: TeamMemberRefDto | null;
+  @ApiProperty({ example: "2026-05-16T13:00:00.000Z", nullable: true, type: String })
+  lastHumanReplyAt!: Date | null;
+  @ApiProperty({ type: [ViewerDto] }) viewers!: ViewerDto[];
   @ApiProperty({ type: [ThreadMessageDto] }) messages!: ThreadMessageDto[];
 }

@@ -18,7 +18,7 @@ export default async function InboxLayout({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  let initial: ConversationList = { items: [], awaitingCount: 0 };
+  let initial: ConversationList = { items: [], awaitingCount: 0, viewerUserId: null };
   try {
     initial = await api.listConversations(slug);
   } catch {

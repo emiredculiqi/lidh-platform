@@ -1228,7 +1228,7 @@ customer" is what the contact stage is for. `ConversationStar { userId,
 conversationId }`; starred threads float to the top of every list, newest
 first within the group, plus a *Favorites* tab.
 
-### Decision 3 — Team awareness is a soft warning, never a lock (pending)
+### Decision 3 — Team awareness is a soft warning, never a lock (shipped)
 
 Three signals, cheapest first: **who replied last** (already in the data —
 human replies record their author, takeover sets `assignedToUserId`, nothing

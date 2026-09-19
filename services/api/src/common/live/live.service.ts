@@ -1,5 +1,6 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, type OnModuleDestroy, type OnModuleInit } from "@nestjs/common";
 import { EventEmitter } from "node:events";
+import { PresenceRegistry, type Viewer, type ViewerInfo } from "./presence";
 
 export interface LiveEvent {
   type:
@@ -11,8 +12,11 @@ export interface LiveEvent {
     | "lead_captured"
     | "contact_registered"
     | "handoff"
-    | "delivery_failed"; // an outbound (e.g. WhatsApp) send failed
+    | "delivery_failed" // an outbound (e.g. WhatsApp) send failed
+    | "presence"; // who is viewing / typing in a thread (ADR-024 §3)
   conversationId: string;
+  /** For `presence`: everyone currently on the thread. */
+  viewers?: Viewer[];
   channelKind?: string;
   contactName?: string | null;
   role?: "user" | "assistant";
@@ -32,12 +36,51 @@ export interface LiveEvent {
  * event emitted on machine A reaches a dashboard connected to machine B.
  */
 @Injectable()
-export class LiveService {
+export class LiveService implements OnModuleInit, OnModuleDestroy {
   private readonly emitter = new EventEmitter();
+  private readonly presence = new PresenceRegistry();
+  private sweepTimer: NodeJS.Timeout | null = null;
 
   constructor() {
     // Many dashboards (and a per-connection listener each) may subscribe.
     this.emitter.setMaxListeners(0);
+  }
+
+  onModuleInit(): void {
+    if (process.env.VITEST) return;
+    // Expire viewers that closed the tab without saying goodbye.
+    this.sweepTimer = setInterval(() => {
+      for (const s of this.presence.sweep()) this.publishPresence(s.tenantId, s.conversationId, s.viewers);
+    }, 10_000);
+    this.sweepTimer.unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.sweepTimer) clearInterval(this.sweepTimer);
+  }
+
+  // ---- presence (ADR-024 §3) ----
+
+  /** A dashboard is on this thread (and typing or not). Broadcasts on change. */
+  heartbeat(tenantId: string, conversationId: string, viewer: ViewerInfo, typing: boolean): Viewer[] {
+    const s = this.presence.heartbeat(tenantId, conversationId, viewer, typing);
+    if (s) this.publishPresence(s.tenantId, s.conversationId, s.viewers);
+    return this.presence.viewers(conversationId);
+  }
+
+  /** A dashboard left this thread. */
+  leave(tenantId: string, conversationId: string, userId: string): void {
+    const s = this.presence.leave(conversationId, userId);
+    if (s) this.publishPresence(tenantId, s.conversationId, s.viewers);
+  }
+
+  /** Who is on this thread right now. */
+  viewers(conversationId: string): Viewer[] {
+    return this.presence.viewers(conversationId);
+  }
+
+  private publishPresence(tenantId: string, conversationId: string, viewers: Viewer[]): void {
+    this.publish(tenantId, { type: "presence", conversationId, viewers });
   }
 
   publish(tenantId: string, event: LiveEvent): void {

@@ -58,6 +58,10 @@ export type KnowledgeSource = {
 // inherit the business setting); `aiEffective` is the resolved answer now.
 export type Responder = "human" | "ai";
 
+// A team member as shown next to a thread (ADR-024 §3).
+export type TeamMemberRef = { userId: string; name: string | null };
+export type Viewer = TeamMemberRef & { typing: boolean };
+
 export type ConversationListItem = {
   id: string;
   channelKind: string;
@@ -76,6 +80,12 @@ export type ConversationListItem = {
   unreadCount: number;
   // Starred by ME (personal, ADR-024 §2).
   starred: boolean;
+  // Author of the latest message when it was a human reply.
+  lastReplyBy: TeamMemberRef | null;
+  // Who took the thread over (takeover sets it, anything else clears it).
+  assignedTo: TeamMemberRef | null;
+  // Team members on this thread right now (seed; live events update it).
+  viewers: Viewer[];
   lastMsgAt: string;
 };
 
@@ -88,6 +98,8 @@ export type ConversationListParams = {
 
 export type ConversationList = {
   items: ConversationListItem[];
+  // The caller's own user id, so the UI can say "you".
+  viewerUserId: string | null;
   // Tenant-wide "customer spoke last" count, independent of the filters.
   awaitingCount: number;
 };
@@ -151,6 +163,11 @@ export type Thread = {
   contactEmail: string | null;
   contactStage: ContactStage;
   starred: boolean;
+  viewerUserId: string | null;
+  assignedTo: TeamMemberRef | null;
+  lastHumanReplyBy: TeamMemberRef | null;
+  lastHumanReplyAt: string | null;
+  viewers: Viewer[];
   messages: {
     role: string;
     contentText: string | null;
@@ -410,6 +427,8 @@ export function makeApi(t: Transport) {
       return t.get<ConversationList>(`/conversations?${qs.toString()}`);
     },
     getThread: (id: string) => t.get<Thread>(`/conversations/${id}`),
+    presence: (id: string, body: { typing?: boolean; leave?: boolean }) =>
+      t.post<{ viewers: Viewer[] }>(`/conversations/${id}/presence`, body),
     setConversationStar: (id: string, starred: boolean) =>
       t.post<{ starred: boolean }>(`/conversations/${id}/star`, { starred }),
     setConversationResponder: (id: string, mode: Responder | "inherit") =>

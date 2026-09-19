@@ -12,7 +12,7 @@ import {
 } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import { apiBase, type Notification } from "@/lib/api-core";
+import { apiBase, type Notification, type Viewer } from "@/lib/api-core";
 import { api } from "@/lib/api";
 import { useLocale } from "@/lib/i18n";
 
@@ -30,6 +30,8 @@ type LiveContextValue = {
   /** Increments (debounced) on every live event. Client-fetched views that
    *  router.refresh() can't reach — the filtered inbox list — re-fetch on it. */
   tick: number;
+  /** Raw event feed, for views that react faster than a refresh (presence). */
+  subscribe: (fn: (e: LiveEvent) => void) => () => void;
 };
 
 const LiveContext = createContext<LiveContextValue>({
@@ -39,13 +41,15 @@ const LiveContext = createContext<LiveContextValue>({
   markNotificationsSeen: () => {},
   refresh: () => {},
   tick: 0,
+  subscribe: () => () => {},
 });
 export const useLive = () => useContext(LiveContext);
 
-type LiveEvent = {
+export type LiveEvent = {
   type: string;
   conversationId?: string;
   channelKind?: string;
+  viewers?: Viewer[];
 };
 
 const SEEN_KEY = "lidh.notifSeen";
@@ -73,6 +77,13 @@ export function LiveProvider({
   const [lastSeen, setLastSeen] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const subs = useRef(new Set<(e: LiveEvent) => void>());
+  const subscribe = useCallback((fn: (e: LiveEvent) => void) => {
+    subs.current.add(fn);
+    return () => {
+      subs.current.delete(fn);
+    };
+  }, []);
 
   // Load the "seen" marker once (client-only; survives reloads per browser).
   useEffect(() => {
@@ -113,6 +124,10 @@ export function LiveProvider({
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handlerRef = useRef<(e: LiveEvent) => void>(() => {});
   handlerRef.current = (e: LiveEvent) => {
+    for (const fn of subs.current) fn(e);
+    // Presence changes nothing on the server; the subscribers above render
+    // it. Refreshing the whole route for every heartbeat would be waste.
+    if (e.type === "presence") return;
     if (e.type === "conversation.started") {
       setToast(al ? "Një bisedë e re ka filluar" : "A new conversation started");
       if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -195,6 +210,7 @@ export function LiveProvider({
         markNotificationsSeen,
         refresh,
         tick,
+        subscribe,
       }}
     >
       {children}

@@ -11,8 +11,10 @@ import { ConversationsService } from "./conversations.service";
 import {
   ConversationListDto,
   ConversationListQueryDto,
+  PresenceDto,
   ThreadDto,
   UnreadSummaryDto,
+  ViewerDto,
 } from "./dto/conversation.dto";
 
 const RESPONDER_MODES = ["human", "ai", "inherit"] as const;
@@ -121,6 +123,23 @@ export class ConversationsController {
     @Body() dto: SetStarDto,
   ): Promise<{ starred: boolean }> {
     return this.conversations.setStar(id, dto.starred);
+  }
+
+  @Post(":id/presence")
+  @ApiOperation({
+    summary: "Presence heartbeat: I'm on this thread (typing or not), or leaving",
+    description:
+      "Dashboards call this every ~20 s while a thread is open, on typing " +
+      "changes, and with leave=true on close. In-memory, single-instance; " +
+      "a viewer expires 45 s after its last heartbeat. Other dashboards of " +
+      "the tenant receive a `presence` live event on every change (ADR-024 §3).",
+  })
+  @ApiOkResponse({ type: ViewerDto, isArray: true })
+  presence(
+    @Param("id") id: string,
+    @Body() dto: PresenceDto,
+  ): Promise<{ viewers: ViewerDto[] }> {
+    return this.conversations.presence(id, dto);
   }
 
   @Post(":id/reply")

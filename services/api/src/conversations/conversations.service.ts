@@ -17,6 +17,7 @@ import {
 import type {
   ConversationListDto,
   ConversationListQueryDto,
+  TeamMemberRefDto,
   ThreadDto,
   UnreadSummaryDto,
 } from "./dto/conversation.dto";
@@ -160,10 +161,11 @@ export class ConversationsService {
         select: { name: true, phone: true, email: true, stage: true },
       },
       channel: { select: { kind: true } },
+      assignedTo: { select: { id: true, name: true, email: true } },
       messages: {
         orderBy: { createdAt: "desc" as const },
         take: 1,
-        select: { contentText: true, role: true },
+        select: { contentText: true, role: true, contentJson: true },
       },
       _count: { select: { messages: true } },
     };
@@ -200,6 +202,7 @@ export class ConversationsService {
 
     const responderSettings = readResponderSettings(tenant.settings);
     const now = new Date();
+    const team = await this.teamNames(tenant.id);
     const items = rows.map((c) => ({
       id: c.id,
       channelKind: c.channel.kind,
@@ -221,9 +224,60 @@ export class ConversationsService {
       messageCount: c._count.messages,
       unreadCount: unread.get(c.id) ?? 0,
       starred: starred.has(c.id),
+      lastReplyBy: c.messages[0] ? humanAuthor(c.messages[0], team) : null,
+      assignedTo: c.assignedTo ? memberRef(c.assignedTo) : null,
+      viewers: this.live.viewers(c.id),
       lastMsgAt: c.lastMsgAt,
     }));
-    return { items, awaitingCount: awaitingIds.length };
+    return {
+      items,
+      awaitingCount: awaitingIds.length,
+      viewerUserId: this.ctx.get().userId ?? null,
+    };
+  }
+
+  /** id → display ref for everyone on the team (a handful of rows). Human
+   *  replies store only the author's id in contentJson. */
+  private async teamNames(tenantId: string): Promise<Map<string, TeamMemberRefDto>> {
+    const users = await this.prisma.client.user.findMany({
+      where: { memberships: { some: { tenantId } } },
+      select: { id: true, name: true, email: true },
+    });
+    return new Map(users.map((u) => [u.id, memberRef(u)]));
+  }
+
+  /** The calling user, as a viewer ref (for presence). */
+  private async me(): Promise<TeamMemberRefDto | null> {
+    const userId = this.ctx.get().userId;
+    if (!userId) return null;
+    const u = await this.prisma.client.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true },
+    });
+    return u ? memberRef(u) : null;
+  }
+
+  /** Presence heartbeat / leave for the calling user (ADR-024 §3). Returns
+   *  who is on the thread now (including the caller). */
+  async presence(
+    id: string,
+    opts: { typing?: boolean; leave?: boolean },
+  ): Promise<{ viewers: { userId: string; name: string | null; typing: boolean }[] }> {
+    const conv = await this.prisma.client.conversation.findUnique({
+      where: { id },
+      select: { tenantId: true },
+    });
+    if (!conv) throw new NotFoundException("conversation_not_found");
+    assertCanAccessTenant(this.ctx.get(), conv.tenantId);
+    const me = await this.me();
+    if (!me) throw new BadRequestException("no_user");
+    if (opts.leave) {
+      this.live.leave(conv.tenantId, id, me.userId);
+      return { viewers: this.live.viewers(id) };
+    }
+    return {
+      viewers: this.live.heartbeat(conv.tenantId, id, me, Boolean(opts.typing)),
+    };
   }
 
   /** The calling user's starred conversation ids in this tenant. */
@@ -361,6 +415,7 @@ export class ConversationsService {
         },
         channel: { select: { kind: true } },
         tenant: { select: { settings: true } },
+        assignedTo: { select: { id: true, name: true, email: true } },
         stars: {
           where: { userId: this.ctx.get().userId ?? "" },
           select: { id: true },
@@ -371,6 +426,7 @@ export class ConversationsService {
             role: true,
             contentText: true,
             toolName: true,
+            contentJson: true,
             createdAt: true,
           },
         },
@@ -379,6 +435,18 @@ export class ConversationsService {
     if (!c) throw new NotFoundException("conversation_not_found");
     assertCanAccessTenant(this.ctx.get(), c.tenantId);
     const responderSettings = readResponderSettings(c.tenant.settings);
+    const team = await this.teamNames(c.tenantId);
+    // Newest human reply, if any (scan from the end; threads are short).
+    let lastHumanReplyBy: TeamMemberRefDto | null = null;
+    let lastHumanReplyAt: Date | null = null;
+    for (let i = c.messages.length - 1; i >= 0; i--) {
+      const by = humanAuthor(c.messages[i], team);
+      if (by) {
+        lastHumanReplyBy = by;
+        lastHumanReplyAt = c.messages[i].createdAt;
+        break;
+      }
+    }
     return {
       id: c.id,
       channelKind: c.channel.kind,
@@ -395,6 +463,11 @@ export class ConversationsService {
       contactEmail: c.contact.email,
       contactStage: c.contact.stage,
       starred: c.stars.length > 0,
+      viewerUserId: this.ctx.get().userId ?? null,
+      assignedTo: c.assignedTo ? memberRef(c.assignedTo) : null,
+      lastHumanReplyBy,
+      lastHumanReplyAt,
+      viewers: this.live.viewers(c.id),
       messages: c.messages.map((m) => ({
         role: m.role,
         contentText: m.contentText,
@@ -403,4 +476,24 @@ export class ConversationsService {
       })),
     };
   }
+}
+
+/** Display ref for a team member: name, else the email. */
+function memberRef(u: { id: string; name: string | null; email: string }): TeamMemberRefDto {
+  return { userId: u.id, name: u.name || u.email };
+}
+
+/** If this message is a human reply (see `reply()`), who wrote it. A member
+ *  who has since left the team resolves to a nameless ref, not to nothing —
+ *  the reply was still a person's. */
+function humanAuthor(
+  m: { role: string; contentJson: unknown },
+  team: Map<string, TeamMemberRefDto>,
+): TeamMemberRefDto | null {
+  if (m.role !== "assistant") return null;
+  const j = m.contentJson as { human?: unknown; by?: unknown } | null;
+  if (!j || j.human !== true) return null;
+  const by = typeof j.by === "string" ? j.by : null;
+  if (!by) return { userId: "", name: null };
+  return team.get(by) ?? { userId: by, name: null };
 }

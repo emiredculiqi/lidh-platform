@@ -9,6 +9,7 @@ import {
   type ConversationList,
   type ConversationListItem,
   type ConversationListParams,
+  type Viewer,
 } from "@/lib/api-core";
 import { api } from "@/lib/api";
 import { useT } from "@/lib/i18n";
@@ -43,7 +44,7 @@ export function InboxShell({
   const pathname = usePathname() || "";
   const router = useRouter();
   const sp = useSearchParams();
-  const { tick } = useLive();
+  const { tick, subscribe } = useLive();
   const base = `/tenants/${slug}/inbox`;
   const detailOpen = pathname !== base; // a conversation is selected
 
@@ -59,6 +60,22 @@ export function InboxShell({
 
   const [list, setList] = useState<ConversationList>(initial);
   const [loading, setLoading] = useState(false);
+  const me = list.viewerUserId;
+
+  // Who is on which thread: seeded by the list, updated by presence events
+  // (which don't refresh the route — see LiveProvider).
+  const [presence, setPresence] = useState<Record<string, Viewer[]>>({});
+  useEffect(
+    () =>
+      subscribe((e) => {
+        if (e.type === "presence" && e.conversationId && e.viewers) {
+          const id = e.conversationId;
+          const viewers = e.viewers;
+          setPresence((p) => ({ ...p, [id]: viewers }));
+        }
+      }),
+    [subscribe],
+  );
   // Unfiltered: the layout's server-rendered list is the truth (it refreshes
   // via router.refresh on live events). Filtered: we fetch.
   useEffect(() => {
@@ -100,6 +117,8 @@ export function InboxShell({
       noMatch: "Asnjë bisedë nuk përputhet me filtrat.",
       clear: "Pastro filtrat",
       anonymous: "Vizitor anonim",
+      you: "Ti",
+      colleague: "Koleg",
     },
     en: {
       all: "All",
@@ -112,6 +131,8 @@ export function InboxShell({
       noMatch: "No conversations match these filters.",
       clear: "Clear filters",
       anonymous: "Anonymous visitor",
+      you: "You",
+      colleague: "Colleague",
     },
   });
 
@@ -238,6 +259,12 @@ export function InboxShell({
               // The conversation you're viewing is, by definition, read — don't
               // badge or bold it (MarkRead keeps the server's read state synced).
               const unread = c.unreadCount > 0 && !active;
+              const others = (presence[c.id] ?? c.viewers).filter((v) => v.userId !== me);
+              const by = c.lastReplyBy
+                ? c.lastReplyBy.userId === me
+                  ? t.you
+                  : c.lastReplyBy.name ?? t.colleague
+                : null;
               return (
                 <Link
                   key={c.id}
@@ -278,10 +305,31 @@ export function InboxShell({
                         unread ? "font-semibold text-brand-ink" : "text-slate-400"
                       }`}
                     >
+                      {by ? <span className="font-semibold">{by}: </span> : null}
                       {c.lastMessagePreview || "—"}
                     </p>
                     <div className="mt-1 flex items-center justify-between gap-2">
-                      <ChannelBadge kind={c.channelKind} />
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <ChannelBadge kind={c.channelKind} />
+                        {others.map((v) => (
+                          <span
+                            key={v.userId}
+                            title={v.name ?? t.colleague}
+                            className={`inline-flex h-5 items-center gap-1 rounded-full px-1.5 text-[10px] font-semibold ring-1 ring-inset ${
+                              v.typing
+                                ? "bg-amber-50 text-amber-700 ring-amber-200"
+                                : "bg-slate-50 text-slate-500 ring-slate-200"
+                            }`}
+                          >
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${
+                                v.typing ? "animate-pulse bg-amber-500" : "bg-slate-400"
+                              }`}
+                            />
+                            {(v.name ?? "?").split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase()}
+                          </span>
+                        ))}
+                      </span>
                       <span className="flex items-center gap-1">
                         {unread ? (
                           <span className="flex-none rounded-full bg-brand-blue px-2 py-0.5 text-[11px] font-bold leading-none text-white">

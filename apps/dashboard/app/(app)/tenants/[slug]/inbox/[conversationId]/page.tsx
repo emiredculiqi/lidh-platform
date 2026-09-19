@@ -8,7 +8,8 @@ import { ContactPanel } from "@/components/inbox/ContactPanel";
 import { TakeoverBar } from "@/components/inbox/TakeoverBar";
 import { MarkRead } from "@/components/inbox/MarkRead";
 import { StarButton } from "@/components/inbox/StarButton";
-import { formatTime } from "@/lib/datetime";
+import { ThreadPresence } from "@/components/inbox/ThreadPresence";
+import { formatDateTime, formatTime } from "@/lib/datetime";
 import { contactDisplayName } from "@/lib/contact-name";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,12 @@ export default async function ThreadPage({
     phone: thread.contactPhone,
     email: thread.contactEmail,
   });
+  // Team awareness (ADR-024 §3): who holds the thread, or who answered last.
+  const me = thread.viewerUserId;
+  const holder = thread.assignedTo;
+  const last = thread.lastHumanReplyBy;
+  const who = (m: { userId: string; name: string | null }, al: boolean) =>
+    m.userId === me ? (al ? "Ti" : "You") : m.name ?? (al ? "Një koleg" : "A colleague");
 
   return (
     <div className="flex min-w-0 flex-1">
@@ -63,6 +70,23 @@ export default async function ThreadPage({
                   <T al="Përgjigjet ekipi" en="Team answering" />
                 )}
               </span>
+              {holder ? (
+                <span className="truncate text-[11px] text-slate-500">
+                  ·{" "}
+                  <T
+                    al={`${who(holder, true)} po e trajton`}
+                    en={`${who(holder, false)} ${holder.userId === me ? "are" : "is"} handling this`}
+                  />
+                </span>
+              ) : last && thread.lastHumanReplyAt ? (
+                <span className="truncate text-[11px] text-slate-500">
+                  ·{" "}
+                  <T
+                    al={`${who(last, true)} u përgjigj ${formatDateTime(thread.lastHumanReplyAt)}`}
+                    en={`${who(last, false)} replied ${formatDateTime(thread.lastHumanReplyAt)}`}
+                  />
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
@@ -108,12 +132,19 @@ export default async function ThreadPage({
           })}
         </div>
 
-        <TakeoverBar
+        <ThreadPresence
           conversationId={thread.id}
-          aiOverride={thread.aiOverride}
-          aiEffective={thread.aiEffective}
-          aiDefault={thread.aiDefault}
-        />
+          viewerUserId={thread.viewerUserId}
+          initialViewers={thread.viewers}
+          assignedTo={thread.assignedTo}
+        >
+          <TakeoverBar
+            conversationId={thread.id}
+            aiOverride={thread.aiOverride}
+            aiEffective={thread.aiEffective}
+            aiDefault={thread.aiDefault}
+          />
+        </ThreadPresence>
       </div>
 
       <ContactPanel slug={slug} thread={thread} />

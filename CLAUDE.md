@@ -62,9 +62,11 @@ following the existing files. Do not rely on `prisma migrate dev` to name them.
   resolves per-thread override → business mode → weekly schedule on every
   inbound message. **Human is the default**; never read `aiOverride` directly —
   call `effectiveResponder`.
-- **Real-time is single-instance.** Live updates and human takeover use an
-  in-process `EventEmitter` and the API runs as one Fly machine. Scaling to 2+
-  needs Redis pub/sub first — this breaks silently, not loudly.
+- **Real-time is single-instance.** Live updates, human takeover and thread
+  presence (who is viewing/typing, `common/live/presence.ts`) use an
+  in-process `EventEmitter` and in-memory state, and the API runs as one Fly
+  machine. Scaling to 2+ needs Redis pub/sub first — this breaks silently,
+  not loudly.
 - **Prompt caching is a cost requirement** (ADR-001 #7): keep the system-prompt
   prefix stable and the tool list deterministic. No per-request tools.
 

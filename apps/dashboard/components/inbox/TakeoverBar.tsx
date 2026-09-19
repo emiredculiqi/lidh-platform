@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import type { Responder } from "@/lib/api-core";
+import { useTypingReporter } from "@/components/inbox/ThreadPresence";
 
 /**
  * Footer of a conversation: who answers this thread, and the reply box.
@@ -32,6 +33,7 @@ export function TakeoverBar({
   const [effective, setEffective] = useState<Responder>(aiEffective);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const reportTyping = useTypingReporter();
 
   const t = useT({
     al: {
@@ -141,7 +143,10 @@ export function TakeoverBar({
       >
         <textarea
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            reportTyping();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
