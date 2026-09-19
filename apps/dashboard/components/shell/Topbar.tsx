@@ -34,24 +34,6 @@ export function Topbar({ slug }: { slug: string }) {
         <p className="mt-0.5 text-[13px] text-slate-400">{sub}</p>
       </div>
       <div className="flex items-center gap-3">
-        <div className="relative hidden sm:block">
-          <input
-            placeholder={al ? "Kërko…" : "Search…"}
-            className="w-[200px] rounded-[10px] border border-slate-200 bg-slate-50 py-2 pl-9 pr-3 text-[13px] text-brand-ink outline-none focus:border-brand-blue"
-          />
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#94a3b8"
-            strokeWidth="2"
-            className="absolute left-3 top-2.5"
-          >
-            <circle cx="11" cy="11" r="7" />
-            <path d="m21 21-4-4" />
-          </svg>
-        </div>
         <NotificationBell slug={slug} />
         <LanguageToggle />
       </div>
