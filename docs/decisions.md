@@ -1248,7 +1248,7 @@ threads, so the checklist follows the customer like notes do (ADR-023).
 `ContactTask { text, done, doneAt, createdById, conversationId? }`, shown in
 the thread's right panel and on the contact page.
 
-### Decision 5 — The assistant drafts; a person sends (pending)
+### Decision 5 — The assistant drafts; a person sends (shipped)
 
 `POST /v1/conversations/:id/suggest` runs the same brain (persona, facts,
 knowledge retrieval over the thread) with **tools off and nothing persisted**:

@@ -143,6 +143,7 @@ export default async function ThreadPage({
             aiOverride={thread.aiOverride}
             aiEffective={thread.aiEffective}
             aiDefault={thread.aiDefault}
+            canSuggest={thread.messages[thread.messages.length - 1]?.role === "user"}
           />
         </ThreadPresence>
       </div>

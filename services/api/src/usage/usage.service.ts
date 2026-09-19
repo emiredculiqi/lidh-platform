@@ -39,6 +39,7 @@ export class UsageService {
       tokenAgg,
       awaitingReply,
       avgResponseSeconds,
+      suggested,
     ] = await Promise.all([
       db.conversation.count({
         where: {
@@ -94,6 +95,7 @@ export class UsageService {
       }),
       this.countAwaitingReply(tenantId),
       this.avgResponseSeconds(tenantId, monthStart),
+      this.suggestionTokens(tenantId, monthStart),
     ]);
 
     return {
@@ -103,8 +105,8 @@ export class UsageService {
       messagesOut,
       newContacts,
       handoffs,
-      tokensIn: tokenAgg._sum.tokensIn ?? 0,
-      tokensOut: tokenAgg._sum.tokensOut ?? 0,
+      tokensIn: (tokenAgg._sum.tokensIn ?? 0) + suggested.tokensIn,
+      tokensOut: (tokenAgg._sum.tokensOut ?? 0) + suggested.tokensOut,
       awaitingReply,
       avgResponseSeconds,
     };
@@ -116,6 +118,31 @@ export class UsageService {
    * assistant answered, the latest message is the assistant's and the thread
    * does not count; if a human took over and hasn't replied yet, it does.
    */
+  /**
+   * Token cost of reply drafts for the team (ADR-024 §5). Drafts write no
+   * message row — only a `reply_suggested` event with the cost in meta — so
+   * they'd be invisible to the message aggregate above.
+   */
+  private async suggestionTokens(
+    tenantId: string,
+    since: Date,
+  ): Promise<{ tokensIn: number; tokensOut: number }> {
+    const rows = await this.prisma.client.$queryRaw<
+      { tokensIn: number; tokensOut: number }[]
+    >`
+      SELECT COALESCE(SUM((e.meta->>'tokensIn')::int), 0)::int  AS "tokensIn",
+             COALESCE(SUM((e.meta->>'tokensOut')::int), 0)::int AS "tokensOut"
+        FROM "Event" e
+       WHERE e."tenantId" = ${tenantId}
+         AND e.kind = 'reply_suggested'
+         AND e."createdAt" >= ${since}
+    `;
+    return {
+      tokensIn: Number(rows[0]?.tokensIn ?? 0),
+      tokensOut: Number(rows[0]?.tokensOut ?? 0),
+    };
+  }
+
   private async countAwaitingReply(tenantId: string): Promise<number> {
     const rows = await this.prisma.client.$queryRaw<{ n: number }[]>`
       SELECT COUNT(*)::int AS n

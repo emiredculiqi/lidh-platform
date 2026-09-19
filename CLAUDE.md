@@ -47,7 +47,9 @@ following the existing files. Do not rely on `prisma migrate dev` to name them.
 
 - **One brain, many envelopes.** Web chat and WhatsApp both call `runAgent` from
   `@lidh/core`. The channel changes only streaming vs not, and delivery. Do not
-  fork agent logic per channel.
+  fork agent logic per channel. Reply drafts for the team (ADR-024 §5) go
+  through `ChatService.suggestReply` — tools off, nothing persisted but a
+  `reply_suggested` event — never a third orchestration.
 - **Tenant isolation is enforced in application code**, via `assertCanAccessTenant`
   / `assertTenantRole` reading an AsyncLocalStorage context seeded by the global
   Clerk `AuthGuard`. There is **no Postgres RLS** — every new query must be scoped

@@ -31,6 +31,10 @@ export interface AgentContext {
   toolsEnabled: ToolName[];
   /** Model override; falls back to DEFAULT_MODEL when omitted. */
   model?: string;
+  /** Drafting a reply that a team member will review and send under their
+   *  own name (ADR-024 §5): speak as the team, never as an assistant, and
+   *  never offer a hand-over — there is nobody else to hand over to. */
+  draftForTeam?: boolean;
 }
 
 /** A tool call the model wants the shell to perform. */

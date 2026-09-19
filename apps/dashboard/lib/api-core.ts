@@ -453,8 +453,10 @@ export function makeApi(t: Transport) {
       t.get<ResponderSettings>(`/tenants/${slug}/responder`),
     setResponder: (slug: string, body: ResponderSettings) =>
       t.put<ResponderSettings>(`/tenants/${slug}/responder`, body),
-    replyToConversation: (id: string, text: string) =>
-      t.post<{ ok: true }>(`/conversations/${id}/reply`, { text }),
+    replyToConversation: (id: string, text: string, suggestion?: "used" | "edited") =>
+      t.post<{ ok: true }>(`/conversations/${id}/reply`, suggestion ? { text, suggestion } : { text }),
+    suggestReply: (id: string) =>
+      t.post<{ text: string; tokensIn: number; tokensOut: number }>(`/conversations/${id}/suggest`, {}),
     markConversationRead: (id: string) =>
       t.post<{ ok: true }>(`/conversations/${id}/read`, {}),
     getUnread: (slug: string) =>

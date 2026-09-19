@@ -22,11 +22,14 @@ export function TakeoverBar({
   aiOverride,
   aiEffective,
   aiDefault,
+  canSuggest,
 }: {
   conversationId: string;
   aiOverride: Responder | null;
   aiEffective: Responder;
   aiDefault: Responder;
+  /** The customer spoke last — there is something to draft an answer to. */
+  canSuggest: boolean;
 }) {
   const router = useRouter();
   const [override, setOverride] = useState<Responder | null>(aiOverride);
@@ -34,6 +37,11 @@ export function TakeoverBar({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const reportTyping = useTypingReporter();
+  // ADR-024 §5: the assistant drafts, a person sends. We remember the draft
+  // so the sent reply can say whether it was used as-is or edited.
+  const [draft, setDraft] = useState<string | null>(null);
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
 
   const t = useT({
     al: {
@@ -45,6 +53,11 @@ export function TakeoverBar({
       backToDefault: aiDefault === "ai" ? "Kthe te parazgjedhja (asistenti)" : "Kthe te parazgjedhja (ekipi)",
       placeholder: "Shkruaj përgjigjen…",
       send: "Dërgo",
+      suggest: "Sugjero një përgjigje",
+      suggesting: "Po shkruan një draft…",
+      nothingToAnswer: "Klienti nuk ka shkruar asgjë të re",
+      draftReady: "Draft nga asistenti — rishikoje para se ta dërgosh",
+      draftFailed: "Nuk u krijua dot një draft. Provo përsëri.",
     },
     en: {
       takeover: "Take over the conversation",
@@ -55,6 +68,11 @@ export function TakeoverBar({
       backToDefault: aiDefault === "ai" ? "Back to business default (assistant)" : "Back to business default (team)",
       placeholder: "Type your reply…",
       send: "Send",
+      suggest: "Suggest a reply",
+      suggesting: "Drafting…",
+      nothingToAnswer: "The customer hasn't said anything new",
+      draftReady: "Draft by the assistant — review before sending",
+      draftFailed: "Couldn't draft a reply. Try again.",
     },
   });
 
@@ -76,11 +94,28 @@ export function TakeoverBar({
     if (!v || busy) return;
     setBusy(true);
     try {
-      await api.replyToConversation(conversationId, v);
+      const suggestion = draft === null ? undefined : v === draft.trim() ? "used" : "edited";
+      await api.replyToConversation(conversationId, v, suggestion);
       setText("");
+      setDraft(null);
       router.refresh();
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function suggest() {
+    if (drafting || busy || !canSuggest) return;
+    setDrafting(true);
+    setDraftError(null);
+    try {
+      const r = await api.suggestReply(conversationId);
+      setText(r.text);
+      setDraft(r.text);
+    } catch {
+      setDraftError(t.draftFailed);
+    } finally {
+      setDrafting(false);
     }
   }
 
@@ -134,6 +169,15 @@ export function TakeoverBar({
           </button>
         </span>
       </div>
+      {draft !== null && !draftError ? (
+        <p className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-medium text-violet-700">
+          <span className="h-1.5 w-1.5 rounded-full bg-violet-500" />
+          {t.draftReady}
+        </p>
+      ) : null}
+      {draftError ? (
+        <p className="mb-1.5 text-[11.5px] font-medium text-rose-600">{draftError}</p>
+      ) : null}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -141,6 +185,24 @@ export function TakeoverBar({
         }}
         className="flex items-end gap-2"
       >
+        <button
+          type="button"
+          onClick={suggest}
+          disabled={drafting || busy || !canSuggest}
+          title={canSuggest ? t.suggest : t.nothingToAnswer}
+          aria-label={t.suggest}
+          className={`flex h-[38px] flex-none items-center gap-1.5 rounded-xl border px-3 text-[12.5px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+            drafting
+              ? "border-violet-200 bg-violet-50 text-violet-700"
+              : "border-slate-200 bg-white text-slate-600 hover:border-violet-300 hover:text-violet-700"
+          }`}
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={drafting ? "animate-pulse" : ""}>
+            <path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8L12 3z" />
+            <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z" />
+          </svg>
+          <span className="hidden sm:inline">{drafting ? t.suggesting : t.suggest}</span>
+        </button>
         <textarea
           value={text}
           onChange={(e) => {

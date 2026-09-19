@@ -85,7 +85,11 @@ export class ConversationsService {
   /** A human agent sends a reply into a (taken-over) conversation. Stored as
    *  an assistant message tagged human-authored, and pushed to BOTH the
    *  dashboard live stream and the visitor's widget receive-stream. */
-  async reply(id: string, text: string): Promise<{ ok: true }> {
+  async reply(
+    id: string,
+    text: string,
+    suggestion?: "used" | "edited",
+  ): Promise<{ ok: true }> {
     const db = this.prisma.client;
     const trimmed = text.trim();
     if (!trimmed) throw new BadRequestException("empty_reply");
@@ -102,7 +106,14 @@ export class ConversationsService {
         tenantId: conv.tenantId,
         role: "assistant",
         contentText: trimmed,
-        contentJson: { human: true, by: this.ctx.get().userId ?? null },
+        // `suggestion` records whether an assistant draft was behind this
+        // reply (ADR-024 §5) — the raw material for learning from approved
+        // replies later.
+        contentJson: {
+          human: true,
+          by: this.ctx.get().userId ?? null,
+          ...(suggestion ? { suggestion } : {}),
+        },
       },
     });
     await db.conversation.update({

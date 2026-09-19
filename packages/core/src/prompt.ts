@@ -20,6 +20,18 @@ RESPONSE STYLE (always follow):
 `.trim();
 
 /**
+ * Added to the stable block when the reply is a DRAFT for a person to send
+ * (ADR-024 §5). The persona describes an assistant; the draft goes out under
+ * a colleague's name, so the voice must be the team's.
+ */
+const DRAFT_NOTE = `
+DRAFTING FOR A TEAM MEMBER:
+- A person from the business will review, edit and send this reply under their own name. Write it as that person: first person, as a member of the team.
+- Never say or imply you are an assistant, a bot or an AI. Never offer to connect the customer with a person or a colleague — the person is already here.
+- If the answer isn't in the business facts or knowledge, draft an honest reply that says what you will check or ask, rather than guessing.
+`.trim();
+
+/**
  * Builds the system prompt as Anthropic text blocks, with SPLIT caching
  * (ADR-001 #7 — the pricing-critical decision):
  *
@@ -36,7 +48,14 @@ RESPONSE STYLE (always follow):
 export function buildSystemPrompt(
   ctx: AgentContext,
 ): Anthropic.TextBlockParam[] {
-  const stable = `${ctx.persona}\n\n${ctx.businessFacts}\n\n${RESPONSE_STYLE}`.trim();
+  const stable = [
+    ctx.persona,
+    ctx.businessFacts,
+    RESPONSE_STYLE,
+    ...(ctx.draftForTeam ? [DRAFT_NOTE] : []),
+  ]
+    .join("\n\n")
+    .trim();
 
   const blocks: Anthropic.TextBlockParam[] = [
     {

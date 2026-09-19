@@ -43,7 +43,8 @@ export async function* runAgent(
         model,
         max_tokens: MAX_OUTPUT_TOKENS,
         system,
-        tools,
+        // An empty tool list is a valid request without tools (drafts).
+        tools: tools.length ? tools : undefined,
         messages: conversation,
       });
 

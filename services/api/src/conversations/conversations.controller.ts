@@ -6,8 +6,9 @@ import {
   ApiQuery,
   ApiTags,
 } from "@nestjs/swagger";
-import { IsBoolean, IsIn, IsString, MaxLength, MinLength } from "class-validator";
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 import { ConversationsService } from "./conversations.service";
+import { ChatService } from "../chat/chat.service";
 import {
   ConversationListDto,
   ConversationListQueryDto,
@@ -38,18 +39,41 @@ class SetStarDto {
   starred!: boolean;
 }
 
+const SUGGESTION_OUTCOMES = ["used", "edited"] as const;
+type SuggestionOutcome = (typeof SUGGESTION_OUTCOMES)[number];
+
 class ReplyDto {
   @ApiProperty({ description: "The human agent's reply to the visitor." })
   @IsString()
   @MinLength(1)
   @MaxLength(4000)
   text!: string;
+
+  @ApiProperty({
+    required: false,
+    enum: SUGGESTION_OUTCOMES,
+    description:
+      "When the reply started from an assistant draft: used = sent as-is, " +
+      "edited = changed first. Omitted for a reply typed from scratch.",
+  })
+  @IsOptional()
+  @IsIn(SUGGESTION_OUTCOMES)
+  suggestion?: SuggestionOutcome;
+}
+
+class SuggestResponseDto {
+  @ApiProperty({ example: "Po, dërgojmë në Durrës çdo ditë…" }) text!: string;
+  @ApiProperty({ example: 1840 }) tokensIn!: number;
+  @ApiProperty({ example: 92 }) tokensOut!: number;
 }
 
 @ApiTags("Conversations")
 @Controller("conversations")
 export class ConversationsController {
-  constructor(private readonly conversations: ConversationsService) {}
+  constructor(
+    private readonly conversations: ConversationsService,
+    private readonly chat: ChatService,
+  ) {}
 
   @Get()
   @ApiOperation({
@@ -142,12 +166,26 @@ export class ConversationsController {
     return this.conversations.presence(id, dto);
   }
 
+  @Post(":id/suggest")
+  @ApiOperation({
+    summary: "Draft a reply for the team to review (nothing is sent)",
+    description:
+      "Runs the assistant over the thread with tools off and returns one " +
+      "draft. No message is stored and the customer sees nothing; only the " +
+      "token cost is recorded. 400 `nothing_to_answer` unless the customer " +
+      "spoke last (ADR-024 §5).",
+  })
+  @ApiOkResponse({ type: SuggestResponseDto })
+  suggest(@Param("id") id: string): Promise<SuggestResponseDto> {
+    return this.chat.suggestReply(id);
+  }
+
   @Post(":id/reply")
   @ApiOperation({ summary: "Send a human reply into a conversation" })
   reply(
     @Param("id") id: string,
     @Body() dto: ReplyDto,
   ): Promise<{ ok: true }> {
-    return this.conversations.reply(id, dto.text);
+    return this.conversations.reply(id, dto.text, dto.suggestion);
   }
 }

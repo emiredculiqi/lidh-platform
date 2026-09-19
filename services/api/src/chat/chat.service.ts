@@ -1,5 +1,11 @@
-import { Injectable, Logger } from "@nestjs/common";
 import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
+import {
+  MAX_HISTORY,
   runAgent,
   extractContact,
   type AgentContext,
@@ -11,6 +17,8 @@ import {
 import { PrismaService } from "../common/prisma/prisma.service";
 import { MailService } from "../common/mail/mail.service";
 import { LiveService } from "../common/live/live.service";
+import { TenantContextService } from "../common/tenant-context/tenant-context.service";
+import { assertCanAccessTenant } from "../common/auth/access";
 import { RetrievalService, buildRetrievalQuery } from "./retrieval.service";
 import type { ChatWebRequestDto } from "./dto/chat-web-request.dto";
 import { loadTenantEntitlements } from "../tenants/entitlements";
@@ -45,7 +53,123 @@ export class ChatService {
     private readonly retrieval: RetrievalService,
     private readonly mail: MailService,
     private readonly live: LiveService,
+    private readonly ctx: TenantContextService,
   ) {}
+
+  /**
+   * Draft a reply for a team member to review (ADR-024 §5). The same brain
+   * as an answer — persona, facts, knowledge retrieved for this thread —
+   * but tools OFF and nothing persisted except a `reply_suggested` event
+   * carrying the token cost: no message row, no live event, no contact
+   * changes. The draft goes into the composer; the person decides.
+   *
+   * Only when the customer spoke last: with an assistant turn at the end the
+   * model would continue that turn instead of answering anything.
+   */
+  async suggestReply(
+    conversationId: string,
+  ): Promise<{ text: string; tokensIn: number; tokensOut: number }> {
+    const db = this.prisma.client;
+    const conversation = await db.conversation.findUnique({
+      where: { id: conversationId },
+      include: {
+        tenant: { select: { id: true, settings: true, defaultLocale: true } },
+      },
+    });
+    if (!conversation) throw new NotFoundException("conversation_not_found");
+    assertCanAccessTenant(this.ctx.get(), conversation.tenantId);
+
+    const agent = await db.agent.findFirst({
+      where: { tenantId: conversation.tenantId },
+      orderBy: { createdAt: "asc" },
+    });
+    if (!agent) throw new BadRequestException("agent_not_configured");
+    const locale =
+      conversation.locale || agent.defaultLocale || conversation.tenant.defaultLocale;
+    const persona =
+      (await db.agentPersona.findUnique({
+        where: { agentId_locale: { agentId: agent.id, locale } },
+      })) ??
+      (await db.agentPersona.findFirst({
+        where: { agentId: agent.id },
+        orderBy: { createdAt: "asc" },
+      }));
+    if (!persona) throw new BadRequestException("agent_persona_missing");
+
+    const recent = await db.message.findMany({
+      where: { conversationId, role: { in: ["user", "assistant"] } },
+      orderBy: { createdAt: "desc" },
+      take: MAX_HISTORY,
+    });
+    const history: AgentMessage[] = recent
+      .reverse()
+      .filter((m) => m.contentText)
+      .map((m) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: m.contentText as string,
+      }));
+    const last = history[history.length - 1];
+    if (!last || last.role !== "user") {
+      throw new BadRequestException("nothing_to_answer");
+    }
+
+    const knowledgeChunks = await this.retrieval.retrieve(
+      conversation.tenantId,
+      buildRetrievalQuery(history, last.content),
+    );
+    const ctx: AgentContext = {
+      locale,
+      persona: persona.content,
+      businessFacts: readBusinessFacts(conversation.tenant.settings),
+      knowledgeChunks,
+      history,
+      toolsEnabled: [],
+      model: agent.modelOverride ?? undefined,
+      draftForTeam: true,
+    };
+
+    let text = "";
+    let tokensIn = 0;
+    let tokensOut = 0;
+    try {
+      for await (const ev of runAgent(ctx, {
+        anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+        // No tools are offered, so this never runs; if it somehow did, the
+        // model is told so instead of anything being written.
+        executeTool: async () => ({ result: "Tools are disabled while drafting." }),
+      })) {
+        if (ev.type === "text") text += ev.delta;
+        else if (ev.type === "usage") {
+          tokensIn += ev.tokensIn + ev.cacheReadTokens + ev.cacheWriteTokens;
+          tokensOut += ev.tokensOut;
+        } else if (ev.type === "error") {
+          throw new Error(ev.message);
+        }
+      }
+    } catch (err) {
+      this.logger.error(
+        `suggestReply failed: ${err instanceof Error ? err.message : "unknown"}`,
+      );
+      throw new BadRequestException("suggest_failed");
+    }
+    text = text.trim();
+    if (!text) throw new BadRequestException("suggest_failed");
+
+    await db.event.create({
+      data: {
+        tenantId: conversation.tenantId,
+        conversationId,
+        kind: "reply_suggested",
+        meta: {
+          tokensIn,
+          tokensOut,
+          chars: text.length,
+          userId: this.ctx.get().userId ?? null,
+        },
+      },
+    });
+    return { text, tokensIn, tokensOut };
+  }
 
   /**
    * Orchestrates one web chat turn end-to-end:

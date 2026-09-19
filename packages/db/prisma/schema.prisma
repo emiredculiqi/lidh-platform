@@ -102,6 +102,9 @@ enum EventKind {
   // Kept as events so the opt-out history is auditable, not just a timestamp.
   contact_opted_out
   contact_opted_in
+  // The assistant drafted a reply for a team member (ADR-024 §5). Carries the
+  // token cost in meta so usage can count it — no message row is written.
+  reply_suggested
 }
 
 // Where a contact stands with the business. Set by the operator from the inbox
