@@ -8,6 +8,7 @@ import { ContactPanel } from "@/components/inbox/ContactPanel";
 import { TakeoverBar } from "@/components/inbox/TakeoverBar";
 import { MarkRead } from "@/components/inbox/MarkRead";
 import { formatTime } from "@/lib/datetime";
+import { contactDisplayName } from "@/lib/contact-name";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,11 @@ export default async function ThreadPage({
 }) {
   const { slug, conversationId } = await params;
   const thread = await api.getThread(conversationId);
-  const name = thread.contactName || thread.contactPhone;
+  const name = contactDisplayName({
+    name: thread.contactName,
+    phone: thread.contactPhone,
+    email: thread.contactEmail,
+  });
 
   return (
     <div className="flex min-w-0 flex-1">

@@ -12,6 +12,16 @@ export class ConversationListItemDto {
   contactName!: string | null;
   @ApiProperty({ example: "+355699998877", nullable: true, type: String })
   contactPhone!: string | null;
+  @ApiProperty({ example: "ana@example.com", nullable: true, type: String })
+  contactEmail!: string | null;
+  @ApiProperty({
+    example: "user",
+    nullable: true,
+    type: String,
+    description:
+      "Role of the latest message. \"user\" = the customer spoke last and is waiting on a reply.",
+  })
+  lastMessageRole!: string | null;
   @ApiProperty({ example: "A bëni dërgesa të dielën?" })
   lastMessagePreview!: string;
   @ApiProperty({ example: 4 }) messageCount!: number;

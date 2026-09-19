@@ -7,8 +7,12 @@ import type { ConversationListItem } from "@/lib/api-core";
 import { useLocale } from "@/lib/i18n";
 import { ChannelBadge } from "@/components/ui/ChannelBadge";
 import { formatDateTime } from "@/lib/datetime";
+import { contactDisplayName, contactInitials } from "@/lib/contact-name";
 
-type Filter = "all" | "ai" | "human";
+// Filter by where the customer wrote from, plus the one that matters most:
+// who is waiting on us. (The old AI/Human split went with ADR-018 — the inbox
+// is organised around channels and work, not around who answered.)
+type Filter = "all" | "web" | "whatsapp" | "unanswered";
 
 export function InboxShell({
   slug,
@@ -26,15 +30,33 @@ export function InboxShell({
   const detailOpen = pathname !== base; // a conversation is selected
   const [filter, setFilter] = useState<Filter>("all");
 
+  const unansweredCount = conversations.filter(
+    (c) => c.lastMessageRole === "user",
+  ).length;
+
   const tabs: { key: Filter; label: string }[] = [
     { key: "all", label: al ? "Të gjitha" : "All" },
-    { key: "ai", label: "AI" },
-    { key: "human", label: al ? "Njeri" : "Human" },
+    { key: "web", label: "Web" },
+    { key: "whatsapp", label: "WhatsApp" },
+    {
+      key: "unanswered",
+      label: (al ? "Pa përgjigje" : "Unanswered") +
+        (unansweredCount ? ` · ${unansweredCount}` : ""),
+    },
   ];
 
-  const shown = conversations.filter((c) =>
-    filter === "all" ? true : filter === "human" ? c.aiPaused : !c.aiPaused,
-  );
+  const shown = conversations.filter((c) => {
+    switch (filter) {
+      case "web":
+        return c.channelKind === "web";
+      case "whatsapp":
+        return c.channelKind === "whatsapp";
+      case "unanswered":
+        return c.lastMessageRole === "user";
+      default:
+        return true;
+    }
+  });
 
   return (
     <div className="flex h-[calc(100vh-118px)] overflow-hidden rounded-2xl border border-slate-200 bg-white">
@@ -82,16 +104,20 @@ export function InboxShell({
                     <span className="absolute left-0 top-3 bottom-3 w-[3px] rounded bg-brand-blue" />
                   ) : null}
                   <div className="flex h-10 w-10 flex-none items-center justify-center rounded-full bg-brand-blue/10 text-[12px] font-bold text-brand-blue">
-                    {(c.contactName ?? c.contactPhone ?? "·")
-                      .slice(0, 2)
-                      .toUpperCase()}
+                    {contactInitials({
+                      name: c.contactName,
+                      phone: c.contactPhone,
+                      email: c.contactEmail,
+                    })}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-[13.5px] font-semibold text-brand-deep">
-                        {c.contactName ||
-                          c.contactPhone ||
-                          (al ? "Vizitor anonim" : "Anonymous")}
+                        {contactDisplayName({
+                          name: c.contactName,
+                          phone: c.contactPhone,
+                          email: c.contactEmail,
+                        }) ?? (al ? "Vizitor anonim" : "Anonymous visitor")}
                       </span>
                       <span
                         className={`flex-none text-[11px] ${

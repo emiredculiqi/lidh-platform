@@ -62,6 +62,9 @@ export type ConversationListItem = {
   locale: string | null;
   contactName: string | null;
   contactPhone: string | null;
+  contactEmail: string | null;
+  // "user" = customer spoke last → waiting on the business.
+  lastMessageRole: string | null;
   lastMessagePreview: string;
   messageCount: number;
   unreadCount: number;

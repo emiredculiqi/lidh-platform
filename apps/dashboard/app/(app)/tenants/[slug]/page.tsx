@@ -7,6 +7,7 @@ import { KpiStat } from "@/components/ui/KpiStat";
 import { ChannelBadge } from "@/components/ui/ChannelBadge";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { formatDateTime, formatDuration } from "@/lib/datetime";
+import { contactDisplayName, contactInitials } from "@/lib/contact-name";
 
 export const dynamic = "force-dynamic";
 
@@ -84,14 +85,20 @@ export default async function DashboardPage({
                 className="flex items-center gap-3 px-5 py-3 transition hover:bg-slate-50"
               >
                 <div className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-brand-blue/10 text-[12px] font-bold text-brand-blue">
-                  {(c.contactName ?? "·").slice(0, 2).toUpperCase()}
+                  {contactInitials({
+                    name: c.contactName,
+                    phone: c.contactPhone,
+                    email: c.contactEmail,
+                  })}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="truncate text-[13.5px] font-semibold text-brand-deep">
-                      {c.contactName ?? (
-                        <T al="Vizitor anonim" en="Anonymous visitor" />
-                      )}
+                      {contactDisplayName({
+                        name: c.contactName,
+                        phone: c.contactPhone,
+                        email: c.contactEmail,
+                      }) ?? <T al="Vizitor anonim" en="Anonymous visitor" />}
                     </span>
                     <ChannelBadge kind={c.channelKind} />
                   </div>

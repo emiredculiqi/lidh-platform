@@ -121,12 +121,12 @@ export class ConversationsService {
         orderBy: { lastMsgAt: "desc" },
         take: 100,
         include: {
-          contact: { select: { name: true, phone: true } },
+          contact: { select: { name: true, phone: true, email: true } },
           channel: { select: { kind: true } },
           messages: {
             orderBy: { createdAt: "desc" },
             take: 1,
-            select: { contentText: true },
+            select: { contentText: true, role: true },
           },
           _count: { select: { messages: true } },
         },
@@ -142,6 +142,11 @@ export class ConversationsService {
       locale: c.locale,
       contactName: c.contact.name,
       contactPhone: c.contact.phone,
+      contactEmail: c.contact.email,
+      // Who spoke last. "user" means the customer is waiting on the business —
+      // the inbox's "Unanswered" filter and the dashboard's "Awaiting reply"
+      // tile both key off this.
+      lastMessageRole: c.messages[0]?.role ?? null,
       lastMessagePreview: (c.messages[0]?.contentText ?? "")
         .replace(/\s+/g, " ")
         .slice(0, 120),
