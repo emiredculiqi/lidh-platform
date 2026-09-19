@@ -16,6 +16,7 @@ import { useT } from "@/lib/i18n";
 import { useLive } from "@/components/shell/LiveProvider";
 import { ChannelBadge } from "@/components/ui/ChannelBadge";
 import { StarButton } from "@/components/inbox/StarButton";
+import { StagePill } from "@/components/contacts/Stage";
 import { formatDateTime } from "@/lib/datetime";
 import { contactDisplayName, contactInitials } from "@/lib/contact-name";
 
@@ -198,13 +199,13 @@ export function InboxShell({
             aria-label={t.search}
             className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[13px] text-brand-ink outline-none focus:border-brand-blue focus:bg-white"
           />
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {tabs.map((x) => (
               <button
                 key={x.key}
                 type="button"
                 onClick={() => apply({ tab: x.key === "all" ? null : x.key })}
-                className={`rounded-full px-2.5 py-1 text-[12px] font-semibold transition ${
+                className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[12px] font-semibold transition ${
                   tab === x.key
                     ? "bg-brand-blue text-white"
                     : "text-slate-500 hover:bg-slate-100"
@@ -217,7 +218,7 @@ export function InboxShell({
               value={stage ?? ""}
               onChange={(e) => apply({ stage: e.target.value || null })}
               aria-label={t.allStages}
-              className={`ml-auto max-w-[120px] rounded-full border px-2 py-1 text-[12px] font-semibold outline-none ${
+              className={`ml-auto max-w-[140px] rounded-full border px-2 py-1 text-[12px] font-semibold outline-none ${
                 stage
                   ? "border-brand-blue bg-brand-blue/5 text-brand-blue"
                   : "border-slate-200 bg-white text-slate-500"
@@ -309,8 +310,9 @@ export function InboxShell({
                       {c.lastMessagePreview || "—"}
                     </p>
                     <div className="mt-1 flex items-center justify-between gap-2">
-                      <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="flex min-w-0 flex-wrap items-center gap-1.5">
                         <ChannelBadge kind={c.channelKind} />
+                        <StagePill stage={c.contactStage} />
                         {others.map((v) => (
                           <span
                             key={v.userId}

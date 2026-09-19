@@ -9,6 +9,7 @@ import { TakeoverBar } from "@/components/inbox/TakeoverBar";
 import { MarkRead } from "@/components/inbox/MarkRead";
 import { StarButton } from "@/components/inbox/StarButton";
 import { ThreadPresence } from "@/components/inbox/ThreadPresence";
+import { ThreadFrame } from "@/components/inbox/ThreadFrame";
 import { formatDateTime, formatTime } from "@/lib/datetime";
 import { contactDisplayName } from "@/lib/contact-name";
 
@@ -33,8 +34,14 @@ export default async function ThreadPage({
   const who = (m: { userId: string; name: string | null }, al: boolean) =>
     m.userId === me ? (al ? "Ti" : "You") : m.name ?? (al ? "Një koleg" : "A colleague");
 
+  // Reachable details shown right under the name, so they are visible even
+  // where the contact panel is collapsed (narrow windows).
+  const reach = [thread.contactEmail, thread.contactPhone]
+    .filter((v): v is string => Boolean(v) && v !== name)
+    .join(" · ");
+
   return (
-    <div className="flex min-w-0 flex-1">
+    <ThreadFrame panel={<ContactPanel slug={slug} thread={thread} />}>
       <MarkRead conversationId={thread.id} signal={thread.messages.length} />
       {/* Thread */}
       <div className="flex min-w-0 flex-1 flex-col">
@@ -56,6 +63,9 @@ export default async function ThreadPage({
               </span>
               <StarButton conversationId={thread.id} starred={thread.starred} size={16} />
             </div>
+            {reach ? (
+              <div className="truncate text-[12px] text-slate-500">{reach}</div>
+            ) : null}
             <div className="mt-0.5 flex items-center gap-2">
               <ChannelBadge kind={thread.channelKind} />
               <StagePill stage={thread.contactStage} />
@@ -147,8 +157,6 @@ export default async function ThreadPage({
           />
         </ThreadPresence>
       </div>
-
-      <ContactPanel slug={slug} thread={thread} />
-    </div>
+    </ThreadFrame>
   );
 }

@@ -356,7 +356,11 @@ export class ChatService {
         name: contact?.name ?? null,
         email: contact?.email ?? null,
       };
-      const after = applyIntakeReply(before, dto.message);
+      // The bot has asked something once there is an assistant turn in the
+      // history; before that, the visitor's message is their greeting or
+      // question, not an answer to anything.
+      const asked = history.some((m) => m.role === "assistant");
+      const after = applyIntakeReply(before, dto.message, { asked });
       const step = intakeStep(after);
 
       if (step !== "done") {

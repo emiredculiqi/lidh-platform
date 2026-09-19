@@ -62,14 +62,26 @@ export function parseName(text: string): string | null {
  * Apply one visitor message to the intake state. Both fields are looked for
  * in every reply, so "Ana, ana@x.com" completes intake in one go, and an
  * email typed at the name prompt is not lost.
+ *
+ * `asked` says whether the bot has already put a question to the visitor.
+ * The FIRST message of a conversation is their greeting or their question
+ * ("Përshëndetje", "sa kushton?", "dua një ofertë") — never an answer — so
+ * it is not read as a name. A volunteered email still counts, and a name is
+ * taken from an unasked message only when it comes with an email.
  */
-export function applyIntakeReply(prev: IntakeState, text: string): IntakeState {
+export function applyIntakeReply(
+  prev: IntakeState,
+  text: string,
+  opts: { asked?: boolean } = {},
+): IntakeState {
+  const asked = opts.asked ?? true;
   const email = prev.email ?? firstEmail(text);
   const step = intakeStep(prev);
   // Only read a name from the reply when we are asking for one (or when the
   // visitor volunteered both); a reply to the email prompt is not a name.
   const name =
-    prev.name ?? (step === "name" || firstEmail(text) ? parseName(text) : null);
+    prev.name ??
+    ((asked && step === "name") || firstEmail(text) ? parseName(text) : null);
   return { name, email };
 }
 

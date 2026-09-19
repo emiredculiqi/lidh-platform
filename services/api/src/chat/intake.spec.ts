@@ -73,6 +73,24 @@ describe("applyIntakeReply", () => {
     const s = applyIntakeReply({ name: "Ana", email: "ana@x.al" }, "Besnik, b@y.al");
     expect(s).toEqual({ name: "Ana", email: "ana@x.al" });
   });
+
+  describe("the first message, before the bot has asked anything", () => {
+    it("is a greeting or a question, never a name", () => {
+      expect(applyIntakeReply(empty, "Pershendetje", { asked: false })).toEqual(empty);
+      expect(applyIntakeReply(empty, "Dua një ofertë", { asked: false })).toEqual(empty);
+      expect(applyIntakeReply(empty, "Ana", { asked: false })).toEqual(empty);
+    });
+    it("still keeps a volunteered email, and a name that came with it", () => {
+      expect(applyIntakeReply(empty, "ana@x.al", { asked: false })).toEqual({
+        name: null,
+        email: "ana@x.al",
+      });
+      expect(applyIntakeReply(empty, "Jam Ana, ana@x.al", { asked: false })).toEqual({
+        name: "Ana",
+        email: "ana@x.al",
+      });
+    });
+  });
 });
 
 describe("intakePrompt copy", () => {
