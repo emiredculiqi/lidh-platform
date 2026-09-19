@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { IsBoolean, IsBooleanString, IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 import { CONTACT_STAGES, type ContactStageValue } from "../../contacts/dto/contact.dto";
 import { LIST_CHANNELS, LIST_ONLY, type ListChannel, type ListOnly } from "../list-query";
+import { ContactTaskDto } from "../../contacts/dto/contact.dto";
 
 /** Query for GET /conversations. Everything optional except the tenant. */
 export class ConversationListQueryDto {
@@ -173,5 +174,7 @@ export class ThreadDto {
   @ApiProperty({ example: "2026-05-16T13:00:00.000Z", nullable: true, type: String })
   lastHumanReplyAt!: Date | null;
   @ApiProperty({ type: [ViewerDto] }) viewers!: ViewerDto[];
+  @ApiProperty({ type: [ContactTaskDto], description: "The contact's checklist (ADR-024 §4)." })
+  tasks!: ContactTaskDto[];
   @ApiProperty({ type: [ThreadMessageDto] }) messages!: ThreadMessageDto[];
 }

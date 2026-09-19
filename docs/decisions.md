@@ -1241,7 +1241,7 @@ fails the moment someone leaves a tab open. Presence is in-process and
 single-instance, consistent with the rest of the live bus (CLAUDE.md), and
 moves to Redis with it.
 
-### Decision 4 — Tasks belong to the contact (pending)
+### Decision 4 — Tasks belong to the contact (shipped)
 
 The right panel of a thread is the *contact* panel, and a customer has many
 threads, so the checklist follows the customer like notes do (ADR-023).

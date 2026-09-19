@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
-import { IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from "class-validator";
 
 export const CONTACT_STAGES = ["new", "lead", "client", "not_a_fit"] as const;
 export type ContactStageValue = (typeof CONTACT_STAGES)[number];
@@ -82,6 +82,43 @@ export class AddContactNoteDto {
   body!: string;
 }
 
+export class ContactTaskDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ example: "Send the price list for 12 people" }) text!: string;
+  @ApiProperty() done!: boolean;
+  @ApiProperty({ nullable: true, type: String }) doneAt!: Date | null;
+  @ApiProperty({ nullable: true, type: String }) conversationId!: string | null;
+  @ApiProperty({ nullable: true, type: String }) createdByName!: string | null;
+  @ApiProperty() createdAt!: Date;
+}
+
+export class AddContactTaskDto {
+  @ApiProperty({ example: "Send the price list for 12 people" })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  text!: string;
+
+  @ApiPropertyOptional({ description: "The thread this was agreed in, if any." })
+  @IsOptional()
+  @IsString()
+  conversationId?: string;
+}
+
+export class UpdateContactTaskDto {
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  done?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  text?: string;
+}
+
 export class ContactDetailDto {
   @ApiProperty() id!: string;
   @ApiProperty({ enum: CONTACT_STAGES, example: "new" }) stage!: string;
@@ -95,4 +132,6 @@ export class ContactDetailDto {
   @ApiProperty({ type: [ContactConversationDto] })
   conversations!: ContactConversationDto[];
   @ApiProperty({ type: [ContactNoteDto] }) notes!: ContactNoteDto[];
+  @ApiProperty({ type: [ContactTaskDto], description: "Open first, then done; newest first within each." })
+  tasks!: ContactTaskDto[];
 }

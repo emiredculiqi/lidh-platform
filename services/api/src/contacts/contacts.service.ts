@@ -8,6 +8,7 @@ import type {
   ContactListQueryDto,
   ContactNoteDto,
   ContactStageValue,
+  ContactTaskDto,
 } from "./dto/contact.dto";
 
 const preview = (s: string | null | undefined): string =>
@@ -117,6 +118,7 @@ export class ContactsService {
           take: 100,
           include: { author: { select: { name: true, email: true } } },
         },
+        tasks: TASKS_INCLUDE,
       },
     });
     if (!c) throw new NotFoundException("contact_not_found");
@@ -149,7 +151,74 @@ export class ContactsService {
         authorName: n.author?.name ?? n.author?.email ?? null,
         createdAt: n.createdAt,
       })),
+      tasks: c.tasks.map(taskDto),
     };
+  }
+
+  /** Add a to-do on a contact (ADR-024 §4). */
+  async addTask(id: string, dto: { text: string; conversationId?: string }): Promise<ContactTaskDto> {
+    const db = this.prisma.client;
+    const c = await db.contact.findUnique({ where: { id }, select: { tenantId: true } });
+    if (!c) throw new NotFoundException("contact_not_found");
+    assertCanAccessTenant(this.ctx.get(), c.tenantId);
+    // A conversation reference must belong to the same contact, or it's dropped.
+    let conversationId: string | null = null;
+    if (dto.conversationId) {
+      const conv = await db.conversation.findUnique({
+        where: { id: dto.conversationId },
+        select: { contactId: true },
+      });
+      if (conv?.contactId === id) conversationId = dto.conversationId;
+    }
+    const t = await db.contactTask.create({
+      data: {
+        tenantId: c.tenantId,
+        contactId: id,
+        conversationId,
+        text: dto.text.trim(),
+        createdByUserId: this.ctx.get().userId ?? null,
+      },
+      include: { createdBy: { select: { name: true, email: true } } },
+    });
+    return taskDto(t);
+  }
+
+  /** Tick / untick / reword a to-do. */
+  async updateTask(
+    id: string,
+    taskId: string,
+    dto: { done?: boolean; text?: string },
+  ): Promise<ContactTaskDto> {
+    const db = this.prisma.client;
+    const t = await db.contactTask.findUnique({
+      where: { id: taskId },
+      select: { tenantId: true, contactId: true, done: true },
+    });
+    if (!t || t.contactId !== id) throw new NotFoundException("task_not_found");
+    assertCanAccessTenant(this.ctx.get(), t.tenantId);
+    const updated = await db.contactTask.update({
+      where: { id: taskId },
+      data: {
+        ...(dto.text !== undefined ? { text: dto.text.trim() } : {}),
+        ...(dto.done !== undefined && dto.done !== t.done
+          ? { done: dto.done, doneAt: dto.done ? new Date() : null }
+          : {}),
+      },
+      include: { createdBy: { select: { name: true, email: true } } },
+    });
+    return taskDto(updated);
+  }
+
+  async deleteTask(id: string, taskId: string): Promise<{ ok: true }> {
+    const db = this.prisma.client;
+    const t = await db.contactTask.findUnique({
+      where: { id: taskId },
+      select: { tenantId: true, contactId: true },
+    });
+    if (!t || t.contactId !== id) throw new NotFoundException("task_not_found");
+    assertCanAccessTenant(this.ctx.get(), t.tenantId);
+    await db.contactTask.delete({ where: { id: taskId } });
+    return { ok: true };
   }
 
   /** A team member writes a note on a contact (ADR-023). */
@@ -197,4 +266,32 @@ export class ContactsService {
     });
     return { stage: updated.stage };
   }
+}
+
+/** Shared include + mapper so the contact page and the thread's right panel
+ *  show the same checklist: open first, then done; newest first in each. */
+export const TASKS_INCLUDE = {
+  orderBy: [{ done: "asc" as const }, { createdAt: "desc" as const }],
+  take: 100,
+  include: { createdBy: { select: { name: true, email: true } } },
+};
+
+export function taskDto(t: {
+  id: string;
+  text: string;
+  done: boolean;
+  doneAt: Date | null;
+  conversationId: string | null;
+  createdAt: Date;
+  createdBy: { name: string | null; email: string } | null;
+}): ContactTaskDto {
+  return {
+    id: t.id,
+    text: t.text,
+    done: t.done,
+    doneAt: t.doneAt,
+    conversationId: t.conversationId,
+    createdByName: t.createdBy?.name ?? t.createdBy?.email ?? null,
+    createdAt: t.createdAt,
+  };
 }

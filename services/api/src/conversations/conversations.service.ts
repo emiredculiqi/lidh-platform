@@ -22,6 +22,7 @@ import type {
   UnreadSummaryDto,
 } from "./dto/conversation.dto";
 import { conversationListWhere } from "./list-query";
+import { TASKS_INCLUDE, taskDto } from "../contacts/contacts.service";
 
 /** Read-side for the dashboard inbox. Returns own DTO shapes (no Prisma
  *  type leak → portable .d.ts, no TS2742). */
@@ -411,7 +412,14 @@ export class ConversationsService {
       where: { id },
       include: {
         contact: {
-          select: { id: true, name: true, phone: true, email: true, stage: true },
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            email: true,
+            stage: true,
+            tasks: TASKS_INCLUDE,
+          },
         },
         channel: { select: { kind: true } },
         tenant: { select: { settings: true } },
@@ -468,6 +476,7 @@ export class ConversationsService {
       lastHumanReplyBy,
       lastHumanReplyAt,
       viewers: this.live.viewers(c.id),
+      tasks: c.contact.tasks.map(taskDto),
       messages: c.messages.map((m) => ({
         role: m.role,
         contentText: m.contentText,

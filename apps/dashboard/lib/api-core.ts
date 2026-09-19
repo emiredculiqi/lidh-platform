@@ -168,6 +168,7 @@ export type Thread = {
   lastHumanReplyBy: TeamMemberRef | null;
   lastHumanReplyAt: string | null;
   viewers: Viewer[];
+  tasks: ContactTask[];
   messages: {
     role: string;
     contentText: string | null;
@@ -228,6 +229,17 @@ export type ContactNote = {
   createdAt: string;
 };
 
+// A to-do on a contact (ADR-024 §4).
+export type ContactTask = {
+  id: string;
+  text: string;
+  done: boolean;
+  doneAt: string | null;
+  conversationId: string | null;
+  createdByName: string | null;
+  createdAt: string;
+};
+
 export type ContactDetail = {
   id: string;
   stage: ContactStage;
@@ -240,6 +252,7 @@ export type ContactDetail = {
   lastSeenAt: string;
   conversations: ContactConversation[];
   notes: ContactNote[];
+  tasks: ContactTask[];
 };
 
 export type Agent = {
@@ -470,6 +483,12 @@ export function makeApi(t: Transport) {
       return t.get<ContactListItem[]>(`/contacts?${qs.toString()}`);
     },
     getContact: (id: string) => t.get<ContactDetail>(`/contacts/${id}`),
+    addContactTask: (id: string, body: { text: string; conversationId?: string }) =>
+      t.post<ContactTask>(`/contacts/${id}/tasks`, body),
+    updateContactTask: (id: string, taskId: string, body: { done?: boolean; text?: string }) =>
+      t.put<ContactTask>(`/contacts/${id}/tasks/${taskId}`, body),
+    deleteContactTask: (id: string, taskId: string) =>
+      t.del<{ ok: true }>(`/contacts/${id}/tasks/${taskId}`),
     addContactNote: (id: string, body: string) =>
       t.post<ContactNote>(`/contacts/${id}/notes`, { body }),
     setContactStage: (id: string, stage: ContactStage) =>

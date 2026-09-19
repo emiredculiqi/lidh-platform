@@ -1,8 +1,11 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Post, Put, Query } from "@nestjs/common";
 import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { ContactsService } from "./contacts.service";
 import {
   AddContactNoteDto,
+  AddContactTaskDto,
+  ContactTaskDto,
+  UpdateContactTaskDto,
   ContactDetailDto,
   ContactListItemDto,
   ContactListQueryDto,
@@ -50,6 +53,34 @@ export class ContactsController {
   @ApiOkResponse({ type: ContactNoteDto })
   addNote(@Param("id") id: string, @Body() dto: AddContactNoteDto): Promise<ContactNoteDto> {
     return this.contacts.addNote(id, dto.body);
+  }
+
+  @Post(":id/tasks")
+  @ApiOperation({
+    summary: "Add a to-do on a contact",
+    description: "Something agreed with or about this customer (ADR-024 §4). Optionally tied to the thread it came from.",
+  })
+  @ApiOkResponse({ type: ContactTaskDto })
+  addTask(@Param("id") id: string, @Body() dto: AddContactTaskDto): Promise<ContactTaskDto> {
+    return this.contacts.addTask(id, dto);
+  }
+
+  @Put(":id/tasks/:taskId")
+  @ApiOperation({ summary: "Tick, untick or reword a to-do" })
+  @ApiOkResponse({ type: ContactTaskDto })
+  updateTask(
+    @Param("id") id: string,
+    @Param("taskId") taskId: string,
+    @Body() dto: UpdateContactTaskDto,
+  ): Promise<ContactTaskDto> {
+    return this.contacts.updateTask(id, taskId, dto);
+  }
+
+  @Delete(":id/tasks/:taskId")
+  @ApiOperation({ summary: "Delete a to-do" })
+  @ApiOkResponse({ schema: { example: { ok: true } } })
+  deleteTask(@Param("id") id: string, @Param("taskId") taskId: string): Promise<{ ok: true }> {
+    return this.contacts.deleteTask(id, taskId);
   }
 
   @Post(":id/stage")

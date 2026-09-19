@@ -4,6 +4,7 @@ import type { Thread } from "@/lib/api-core";
 import { T } from "@/components/T";
 import { ChannelBadge } from "@/components/ui/ChannelBadge";
 import { StageSelect } from "@/components/contacts/Stage";
+import { ContactTasks } from "@/components/contacts/ContactTasks";
 import { contactDisplayName, contactInitials } from "@/lib/contact-name";
 
 const LANG: Record<string, string> = {
@@ -57,6 +58,14 @@ export function ContactPanel({ slug, thread }: { slug: string; thread: Thread })
         <Field label={<T al="Statusi i klientit" en="Customer stage" />}>
           <StageSelect contactId={thread.contactId} stage={thread.contactStage} />
         </Field>
+        <div className="border-t border-slate-200 pt-4">
+          <ContactTasks
+            contactId={thread.contactId}
+            conversationId={thread.id}
+            tasks={thread.tasks}
+            compact
+          />
+        </div>
       </div>
 
       <div className="border-t border-slate-200 p-4">

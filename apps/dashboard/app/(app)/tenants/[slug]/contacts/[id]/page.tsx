@@ -8,6 +8,7 @@ import { StagePill } from "@/components/contacts/Stage";
 import { formatDateTime } from "@/lib/datetime";
 import { StageSelect } from "@/components/contacts/Stage";
 import { ContactNotes } from "@/components/contacts/ContactNotes";
+import { ContactTasks } from "@/components/contacts/ContactTasks";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +126,8 @@ export default async function ContactDetailPage({
               </div>
             )}
           </Card>
+
+          <ContactTasks contactId={c.id} tasks={c.tasks} />
 
           <ContactNotes contactId={c.id} notes={c.notes} />
         </div>

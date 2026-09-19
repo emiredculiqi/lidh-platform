@@ -33,6 +33,7 @@ export type {
   KnowledgeChunk,
   Contact,
   ContactNote,
+  ContactTask,
   ContactNoteKind,
   Conversation,
   ConversationStar,

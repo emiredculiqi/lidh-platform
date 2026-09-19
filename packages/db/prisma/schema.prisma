@@ -185,6 +185,7 @@ model User {
   assignedConversations Conversation[] @relation("ConversationAssignee")
   contactNotes          ContactNote[]  @relation("ContactNoteAuthor")
   stars                 ConversationStar[]
+  contactTasks          ContactTask[]  @relation("ContactTaskCreator")
 
   @@index([clerkId])
 }
@@ -261,6 +262,7 @@ model Tenant {
   conversations    Conversation[]
   messages         Message[]
   contactNotes     ContactNote[]
+  contactTasks     ContactTask[]
   events           Event[]
   usageDaily       UsageDaily[]
 
@@ -494,6 +496,7 @@ model Contact {
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   conversations Conversation[]
   notes         ContactNote[]
+  tasks         ContactTask[]
 
   // Cross-channel unification: same phone/email per tenant collapses to one contact
   @@unique([tenantId, phone])
@@ -543,6 +546,7 @@ model Conversation {
   assignedTo User?     @relation("ConversationAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   messages   Message[]
   notes      ContactNote[]
+  tasks      ContactTask[]
   events     Event[]
   stars      ConversationStar[]
 
@@ -602,6 +606,30 @@ model Message {
 // ─────────────────────────────────────────────────────────────────────────────
 // Leads (captured by the agent or manually)
 // ─────────────────────────────────────────────────────────────────────────────
+
+/// A to-do agreed with (or about) a customer (ADR-024 §4). Lives on the
+/// contact, like notes: a customer has many threads, the checklist follows
+/// the person. `conversationId` records where it came from, when it did.
+model ContactTask {
+  id              String    @id @default(cuid())
+  tenantId        String
+  contactId       String
+  conversationId  String?
+  text            String    @db.Text
+  done            Boolean   @default(false)
+  doneAt          DateTime?
+  createdByUserId String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contact      Contact       @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  createdBy    User?         @relation("ContactTaskCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([contactId, done, createdAt])
+  @@index([tenantId, done])
+}
 
 model ContactNote {
   id             String          @id @default(cuid())
