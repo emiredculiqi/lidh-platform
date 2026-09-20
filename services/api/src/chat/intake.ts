@@ -85,31 +85,63 @@ export function applyIntakeReply(
   return { name, email };
 }
 
-/** Bot copy. `locale` is the conversation's; anything not "al" gets English. */
+/** Did the visitor at least try to type an email? Decides between "that
+ *  doesn't look right" and "we do need one to continue". */
+export function looksLikeEmailAttempt(text: string): boolean {
+  return /@|\b(gmail|hotmail|yahoo|outlook|icloud|mail)\b|\.(com|al|net|org|eu|de|it)\b/i.test(text);
+}
+
+export interface IntakePromptOpts {
+  /** The visitor's last reply didn't answer the current question. */
+  retry?: boolean;
+  /** Business name, for the opening line ("to chat with Bela Shoes…"). */
+  business?: string;
+  /** The visitor's last reply, to pick the right retry wording. */
+  reply?: string;
+}
+
+/**
+ * Bot copy. `locale` is the conversation's; anything not "al" gets English.
+ *
+ * The first line says up front WHY we ask (a name and an email are required
+ * to chat with the business, and the team uses them only to reply). Retries
+ * never just repeat the question: a refusal ("I don't want to") gets the
+ * reason again and a clear "we can't continue without it"; a mistyped
+ * address gets an example.
+ */
 export function intakePrompt(
   step: Exclude<IntakeStep, "done">,
   locale: string | null | undefined,
   state: IntakeState,
-  opts: { retry?: boolean } = {},
+  opts: IntakePromptOpts = {},
 ): string {
   const al = locale === "al";
-  const who = state.name ? state.name : "";
+  const who = state.name ? `, ${state.name}` : "";
+  const biz = opts.business?.trim();
   if (step === "name") {
+    if (opts.retry) {
+      return al
+        ? "Për të vazhduar na duhet një emër — mjafton emri i parë. Si quheni?"
+        : "We need a name to continue — a first name is enough. What should we call you?";
+    }
     return al
-      ? opts.retry
-        ? "Nuk e kapa emrin. Si quheni?"
-        : "Përshëndetje! Para se të fillojmë, si quheni?"
-      : opts.retry
-        ? "I didn't catch your name. What should we call you?"
-        : "Hi! Before we start, what's your name?";
+      ? `Përshëndetje! Për të biseduar me ${biz || "biznesin"}, na duhen emri dhe emaili juaj — ekipi i përdor vetëm për t'ju kthyer përgjigje. Si quheni?`
+      : `Hi! To chat with ${biz || "the business"} we need your name and email — the team uses them only to get back to you. What's your name?`;
+  }
+  if (opts.retry) {
+    const attempt = opts.reply ? looksLikeEmailAttempt(opts.reply) : true;
+    if (attempt) {
+      return al
+        ? `Ky email nuk duket i saktë (p.sh. emri@shembull.com). Mund ta shkruani sërish${who}?`
+        : `That email doesn't look right (e.g. name@example.com). Could you type it again${who}?`;
+    }
+    return al
+      ? `E kuptoj${who}, por pa një email nuk mund të vazhdojmë — ekipi e përdor vetëm për t'ju kthyer përgjigje. Mund ta shkruani këtu?`
+      : `I understand${who}, but we can't continue without an email — the team uses it only to reply to you. Could you type it here?`;
   }
   return al
-    ? opts.retry
-      ? `Ky nuk duket si email i saktë. Cili është emaili juaj${who ? `, ${who}` : ""}?`
-      : `Faleminderit${who ? `, ${who}` : ""}! Cili është emaili juaj, që të mund t'ju kontaktojmë?`
-    : opts.retry
-      ? `That doesn't look like a valid email. What's your email${who ? `, ${who}` : ""}?`
-      : `Thanks${who ? `, ${who}` : ""}! And your email, so we can follow up?`;
+    ? `Faleminderit${who}! Dhe emaili juaj, që ekipi të mund t'ju përgjigjet edhe nëse largoheni nga faqja?`
+    : `Thanks${who}! And your email, so the team can reply even if you leave the page?`;
 }
 
 /** What the bot says once intake is complete and the TEAM (not the assistant)

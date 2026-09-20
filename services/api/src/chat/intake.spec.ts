@@ -4,6 +4,7 @@ import {
   firstEmail,
   intakePrompt,
   intakeStep,
+  looksLikeEmailAttempt,
   parseName,
 } from "./intake";
 
@@ -98,6 +99,40 @@ describe("intakePrompt copy", () => {
     expect(intakePrompt("name", "al", empty)).toMatch(/quheni/);
     expect(intakePrompt("name", "en", empty)).toMatch(/your name/);
     expect(intakePrompt("email", "en", { name: "Ana", email: null })).toMatch(/Thanks, Ana/);
-    expect(intakePrompt("email", "al", { name: "Ana", email: null }, { retry: true })).toMatch(/nuk duket/i);
+  });
+
+  it("says up front that name + email are required, and names the business", () => {
+    const al = intakePrompt("name", "al", empty, { business: "Bela Shoes" });
+    expect(al).toMatch(/Bela Shoes/);
+    expect(al).toMatch(/emri dhe emaili/);
+    const en = intakePrompt("name", "en", empty, { business: "Bela Shoes" });
+    expect(en).toMatch(/To chat with Bela Shoes we need your name and email/);
+  });
+
+  it("answers a refusal with the reason, not with 'invalid email'", () => {
+    const ana = { name: "Ana", email: null };
+    const refusal = intakePrompt("email", "al", ana, { retry: true, reply: "Nuk dua te ta jap" });
+    expect(refusal).toMatch(/nuk mund të vazhdojmë/);
+    expect(refusal).not.toMatch(/nuk duket/);
+    const typo = intakePrompt("email", "al", ana, { retry: true, reply: "ana@gmail" });
+    expect(typo).toMatch(/nuk duket i saktë/);
+    expect(typo).toMatch(/emri@shembull\.com/);
+    expect(intakePrompt("email", "en", ana, { retry: true, reply: "no" })).toMatch(/can't continue without an email/);
+  });
+
+  it("retry for the name explains that a first name is enough", () => {
+    expect(intakePrompt("name", "al", empty, { retry: true })).toMatch(/mjafton emri i parë/);
+  });
+});
+
+describe("looksLikeEmailAttempt", () => {
+  it.each([
+    ["ana@gmail", true],
+    ["ana at gmail.com", true],
+    ["ana.b@x.al", true],
+    ["Nuk dua te ta jap", false],
+    ["no thanks", false],
+  ])("%s → %s", (input, expected) => {
+    expect(looksLikeEmailAttempt(input)).toBe(expected);
   });
 });

@@ -110,45 +110,13 @@ export function ResponderSettingsForm({
     }
   }
 
-  function Option({
-    value,
-    label,
-    help,
-  }: {
-    value: ResponderMode;
-    label: string;
-    help: string;
-  }) {
-    return (
-      <label
-        className={`flex cursor-pointer gap-3 rounded-xl border px-4 py-3 transition ${
-          mode === value
-            ? "border-brand-blue bg-brand-blue/5"
-            : "border-slate-200 hover:border-slate-300"
-        }`}
-      >
-        <input
-          type="radio"
-          name="responder-mode"
-          value={value}
-          checked={mode === value}
-          onChange={() => setMode(value)}
-          className="mt-1"
-        />
-        <span>
-          <span className="block text-[13.5px] font-semibold text-brand-deep">{label}</span>
-          <span className="block text-[12.5px] text-slate-500">{help}</span>
-        </span>
-      </label>
-    );
-  }
 
   return (
     <div className="space-y-5">
       <div className="grid gap-3">
-        <Option value="human" label={t.human} help={t.humanHelp} />
-        <Option value="ai" label={t.ai} help={t.aiHelp} />
-        <Option value="schedule" label={t.schedule} help={t.scheduleHelp} />
+        <Option value="human" label={t.human} help={t.humanHelp} mode={mode} onPick={setMode} />
+        <Option value="ai" label={t.ai} help={t.aiHelp} mode={mode} onPick={setMode} />
+        <Option value="schedule" label={t.schedule} help={t.scheduleHelp} mode={mode} onPick={setMode} />
       </div>
 
       {mode === "schedule" ? (
@@ -250,5 +218,44 @@ export function ResponderSettingsForm({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/** One radio card. Top-level on purpose: a component defined inside the
+ *  form's render would be a new type every render and remount its input. */
+function Option({
+  value,
+  label,
+  help,
+  mode,
+  onPick,
+}: {
+  value: ResponderMode;
+  label: string;
+  help: string;
+  mode: ResponderMode;
+  onPick: (m: ResponderMode) => void;
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer gap-3 rounded-xl border px-4 py-3 transition ${
+        mode === value
+          ? "border-brand-blue bg-brand-blue/5"
+          : "border-slate-200 hover:border-slate-300"
+      }`}
+    >
+      <input
+        type="radio"
+        name="responder-mode"
+        value={value}
+        checked={mode === value}
+        onChange={() => onPick(value)}
+        className="mt-1"
+      />
+      <span>
+        <span className="block text-[13.5px] font-semibold text-brand-deep">{label}</span>
+        <span className="block text-[12.5px] text-slate-500">{help}</span>
+      </span>
+    </label>
   );
 }

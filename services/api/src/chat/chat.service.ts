@@ -374,7 +374,11 @@ export class ChatService {
         const retry =
           step === intakeStep(before) && conversation.status === "open" &&
           history.some((m) => m.role === "assistant");
-        const prompt = intakePrompt(step, locale, after, { retry });
+        const prompt = intakePrompt(step, locale, after, {
+          retry,
+          business: tenant.name,
+          reply: dto.message,
+        });
         await db.message.create({
           data: {
             conversationId: conversation.id,
