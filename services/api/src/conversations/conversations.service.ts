@@ -166,7 +166,7 @@ export class ConversationsService {
         only: query.only,
         includePreview: query.includePreview === "true",
       },
-      { awaiting: awaitingIds, starred: starredIds },
+      { awaiting: awaitingIds },
     );
     const include = {
       contact: {
@@ -193,7 +193,7 @@ export class ConversationsService {
       // Starred threads must surface even when older than the newest page.
       // A second, small query (bounded by the star count) instead of an
       // ORDER BY the database can't express for "starred by THIS user".
-      starredIds.length && query.only !== "favorites"
+      starredIds.length
         ? db.conversation.findMany({
             where: { AND: [where, { id: { in: starredIds } }] },
             include,

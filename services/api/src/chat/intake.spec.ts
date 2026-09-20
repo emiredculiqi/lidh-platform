@@ -98,7 +98,7 @@ describe("intakePrompt copy", () => {
   it("is Albanian for al and English otherwise, and uses the name once known", () => {
     expect(intakePrompt("name", "al", empty)).toMatch(/quheni/);
     expect(intakePrompt("name", "en", empty)).toMatch(/your name/);
-    expect(intakePrompt("email", "en", { name: "Ana", email: null })).toMatch(/Thanks, Ana/);
+    expect(intakePrompt("email", "en", { name: "Ana", email: null })).toMatch(/Nice to meet you, Ana/);
   });
 
   it("says up front that name + email are required, and names the business", () => {
@@ -106,22 +106,26 @@ describe("intakePrompt copy", () => {
     expect(al).toMatch(/Bela Shoes/);
     expect(al).toMatch(/emri dhe emaili/);
     const en = intakePrompt("name", "en", empty, { business: "Bela Shoes" });
-    expect(en).toMatch(/To chat with Bela Shoes we need your name and email/);
+    expect(en).toMatch(/welcome to Bela Shoes/);
+    expect(en).toMatch(/we need your name and email/);
+    expect(en).toMatch(/know who we're talking to/);
   });
 
   it("answers a refusal with the reason, not with 'invalid email'", () => {
     const ana = { name: "Ana", email: null };
     const refusal = intakePrompt("email", "al", ana, { retry: true, reply: "Nuk dua te ta jap" });
     expect(refusal).toMatch(/nuk mund të vazhdojmë/);
+    expect(refusal).toMatch(/njohim si klient/);
     expect(refusal).not.toMatch(/nuk duket/);
     const typo = intakePrompt("email", "al", ana, { retry: true, reply: "ana@gmail" });
     expect(typo).toMatch(/nuk duket i saktë/);
     expect(typo).toMatch(/emri@shembull\.com/);
-    expect(intakePrompt("email", "en", ana, { retry: true, reply: "no" })).toMatch(/can't continue without an email/);
+    expect(intakePrompt("email", "en", ana, { retry: true, reply: "no" })).toMatch(/without it we can't continue/);
   });
 
   it("retry for the name explains that a first name is enough", () => {
     expect(intakePrompt("name", "al", empty, { retry: true })).toMatch(/mjafton emri i parë/);
+    expect(intakePrompt("name", "al", empty, { business: "Bela" })).toMatch(/njohim si klient/);
   });
 });
 

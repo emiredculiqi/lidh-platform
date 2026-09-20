@@ -93,7 +93,7 @@ export type ConversationListParams = {
   q?: string;
   channel?: "web" | "whatsapp" | "instagram";
   stage?: ContactStage;
-  only?: "unanswered" | "favorites";
+  only?: "unanswered";
 };
 
 export type ConversationList = {

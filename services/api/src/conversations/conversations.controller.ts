@@ -89,7 +89,7 @@ export class ConversationsController {
   @ApiQuery({ name: "q", required: false })
   @ApiQuery({ name: "channel", required: false, enum: ["web", "whatsapp", "instagram"] })
   @ApiQuery({ name: "stage", required: false, enum: ["new", "lead", "client", "not_a_fit"] })
-  @ApiQuery({ name: "only", required: false, enum: ["unanswered", "favorites"] })
+  @ApiQuery({ name: "only", required: false, enum: ["unanswered"] })
   @ApiOkResponse({ type: ConversationListDto })
   list(@Query() query: ConversationListQueryDto): Promise<ConversationListDto> {
     return this.conversations.list(query);
@@ -138,8 +138,8 @@ export class ConversationsController {
   @ApiOperation({
     summary: "Star or unstar this conversation for the calling user",
     description:
-      "Personal: other team members don't see it. Starred threads float to " +
-      "the top of the caller's inbox and back the Favorites tab.",
+      "Personal: other team members don't see it. Starred threads are " +
+      "always returned first and the inbox shows them as their own section.",
   })
   @ApiOkResponse({ schema: { example: { starred: true } } })
   setStar(

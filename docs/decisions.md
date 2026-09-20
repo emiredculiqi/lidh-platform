@@ -1212,8 +1212,15 @@ scale — a trigram index is the upgrade if it ever shows in a query plan).
 "Unanswered" is computed server-side with the same SQL as the dashboard's
 *Awaiting reply* tile, and its tenant-wide count is returned alongside the
 list so the tab badge and the KPI can never disagree. The inbox reads
-`?tab=&q=&stage=` from the URL, exactly like Contacts, so a view survives a
-reload and thread links keep the filters.
+`?only=&channel=&stage=&q=` from the URL, exactly like Contacts, so a view
+survives a reload and thread links keep the filters.
+
+Layout, after a first round of hand testing: the search box is always
+visible; the one work filter (*All* / *Unanswered · n*) is a pair of tabs;
+channel and customer stage sit behind a single *Filters* button with a count
+badge. Waiting threads are also marked in the list itself (amber dot on the
+avatar, "Waiting · 12 min" pill), because a filter answers "which ones" but
+a row has to answer "is this one".
 
 A Next.js layout cannot read the query string, so the layout still renders the
 **unfiltered** first page for instant paint, and the client fetches the
@@ -1226,7 +1233,10 @@ not search text and silently missed anything older than the page.
 A star is a focus tool for one person, like Gmail's; a shared "important
 customer" is what the contact stage is for. `ConversationStar { userId,
 conversationId }`; starred threads float to the top of every list, newest
-first within the group, plus a *Favorites* tab.
+first within the group, shown as a **collapsible section** at the top of the
+inbox rather than as a filter tab — the focus set stays in view while the
+rest of the list is what it always was. The star sits at the top right of a
+row, next to the time.
 
 ### Decision 3 — Team awareness is a soft warning, never a lock (shipped)
 

@@ -32,7 +32,7 @@ export class ConversationListQueryDto {
   @IsIn(CONTACT_STAGES)
   stage?: ContactStageValue;
 
-  @ApiPropertyOptional({ enum: LIST_ONLY, description: "unanswered = the customer spoke last; favorites = starred by the caller." })
+  @ApiPropertyOptional({ enum: LIST_ONLY, description: "unanswered = the customer spoke last." })
   @IsOptional()
   @IsIn(LIST_ONLY)
   only?: ListOnly;

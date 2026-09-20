@@ -121,12 +121,12 @@ export function intakePrompt(
   if (step === "name") {
     if (opts.retry) {
       return al
-        ? "Për të vazhduar na duhet një emër — mjafton emri i parë. Si quheni?"
-        : "We need a name to continue — a first name is enough. What should we call you?";
+        ? "Që t'ju njohim, na duhet një emër — mjafton emri i parë. Si quheni?"
+        : "So we know who we're talking to, we need a name — a first name is enough. What should we call you?";
     }
     return al
-      ? `Përshëndetje! Për të biseduar me ${biz || "biznesin"}, na duhen emri dhe emaili juaj — ekipi i përdor vetëm për t'ju kthyer përgjigje. Si quheni?`
-      : `Hi! To chat with ${biz || "the business"} we need your name and email — the team uses them only to get back to you. What's your name?`;
+      ? `Përshëndetje, mirë se vini te ${biz || "ne"}! Para se të vazhdojmë, na duhen emri dhe emaili juaj, që t'ju njohim si klient dhe t'ju kthejmë përgjigje. Si quheni?`
+      : `Hi, welcome to ${biz || "our chat"}! Before we continue, we need your name and email, so we know who we're talking to and can get back to you. What's your name?`;
   }
   if (opts.retry) {
     const attempt = opts.reply ? looksLikeEmailAttempt(opts.reply) : true;
@@ -136,12 +136,12 @@ export function intakePrompt(
         : `That email doesn't look right (e.g. name@example.com). Could you type it again${who}?`;
     }
     return al
-      ? `E kuptoj${who}, por pa një email nuk mund të vazhdojmë — ekipi e përdor vetëm për t'ju kthyer përgjigje. Mund ta shkruani këtu?`
-      : `I understand${who}, but we can't continue without an email — the team uses it only to reply to you. Could you type it here?`;
+      ? `E kuptoj${who}. Emailin e përdorim vetëm që t'ju njohim si klient dhe t'ju përgjigjemi — pa të nuk mund të vazhdojmë. Mund ta shkruani këtu?`
+      : `I understand${who}. We only use your email to know you as a customer and to reply to you — without it we can't continue. Could you type it here?`;
   }
   return al
-    ? `Faleminderit${who}! Dhe emaili juaj, që ekipi të mund t'ju përgjigjet edhe nëse largoheni nga faqja?`
-    : `Thanks${who}! And your email, so the team can reply even if you leave the page?`;
+    ? `Gëzohem${who}! Dhe emaili juaj, që t'ju gjejmë si klient dhe t'ju përgjigjemi edhe nëse mbyllni faqen?`
+    : `Nice to meet you${who}! And your email, so we can find you as a customer and reply even if you close the page?`;
 }
 
 /** What the bot says once intake is complete and the TEAM (not the assistant)
