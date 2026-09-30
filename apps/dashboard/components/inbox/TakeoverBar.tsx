@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useT } from "@/lib/i18n";
@@ -42,6 +42,15 @@ export function TakeoverBar({
   const [draft, setDraft] = useState<string | null>(null);
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
+  // The box grows with its content (a three-line draft must not land in a
+  // one-line box) and shrinks back after sending.
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [text]);
 
   const t = useT({
     al: {
@@ -58,6 +67,7 @@ export function TakeoverBar({
       nothingToAnswer: "Klienti nuk ka shkruar asgjë të re",
       draftReady: "Draft nga asistenti — rishikoje para se ta dërgosh",
       draftFailed: "Nuk u krijua dot një draft. Provo përsëri.",
+      replaceTyped: "Të zëvendësohet teksti që ke shkruar me një draft nga asistenti?",
     },
     en: {
       takeover: "Take over the conversation",
@@ -73,6 +83,7 @@ export function TakeoverBar({
       nothingToAnswer: "The customer hasn't said anything new",
       draftReady: "Draft by the assistant — review before sending",
       draftFailed: "Couldn't draft a reply. Try again.",
+      replaceTyped: "Replace what you typed with a draft from the assistant?",
     },
   });
 
@@ -106,6 +117,9 @@ export function TakeoverBar({
 
   async function suggest() {
     if (drafting || busy || !canSuggest) return;
+    // Never silently discard what the person typed.
+    const typed = text.trim();
+    if (typed && typed !== (draft ?? "").trim() && !window.confirm(t.replaceTyped)) return;
     setDrafting(true);
     setDraftError(null);
     try {
@@ -204,6 +218,7 @@ export function TakeoverBar({
           <span className="hidden sm:inline">{drafting ? t.suggesting : t.suggest}</span>
         </button>
         <textarea
+          ref={taRef}
           value={text}
           onChange={(e) => {
             setText(e.target.value);
@@ -217,7 +232,7 @@ export function TakeoverBar({
           }}
           rows={1}
           placeholder={t.placeholder}
-          className="max-h-28 flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-[13.5px] text-brand-ink outline-none focus:border-brand-blue"
+          className="max-h-40 flex-1 resize-none overflow-y-auto rounded-xl border border-slate-200 px-3 py-2 text-[13.5px] text-brand-ink outline-none focus:border-brand-blue"
         />
         <button
           type="submit"

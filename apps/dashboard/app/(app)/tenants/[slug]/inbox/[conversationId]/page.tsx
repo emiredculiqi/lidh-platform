@@ -10,6 +10,7 @@ import { MarkRead } from "@/components/inbox/MarkRead";
 import { StarButton } from "@/components/inbox/StarButton";
 import { ThreadPresence } from "@/components/inbox/ThreadPresence";
 import { ThreadFrame } from "@/components/inbox/ThreadFrame";
+import { ThreadScroll } from "@/components/inbox/ThreadScroll";
 import { formatDateTime, formatTime } from "@/lib/datetime";
 import { contactDisplayName } from "@/lib/contact-name";
 
@@ -101,7 +102,11 @@ export default async function ThreadPage({
           </div>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-brand-fog px-5 py-5">
+        <ThreadScroll
+          key={thread.id}
+          signal={thread.messages.length}
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto bg-brand-fog px-5 py-5"
+        >
           {thread.messages.map((m, i) => {
             if (m.role === "tool") {
               return (
@@ -140,7 +145,7 @@ export default async function ThreadPage({
               </div>
             );
           })}
-        </div>
+        </ThreadScroll>
 
         <ThreadPresence
           conversationId={thread.id}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiBase } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { Markdown } from "./Markdown";
@@ -20,6 +20,11 @@ export function TestChat({ tenantSlug }: { tenantSlug: string }) {
   // The preview route is Clerk-guarded (not @Public): preview conversations
   // skip the intake gate and never reach the business's inbox or usage.
   const { getToken } = useAuth();
+  const listRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [msgs]);
 
   const t = useT({
     al: {
@@ -117,7 +122,7 @@ export function TestChat({ tenantSlug }: { tenantSlug: string }) {
 
   return (
     <div className="flex h-[60vh] flex-col rounded-xl border border-brand-ink/10 bg-white">
-      <div className="flex-1 space-y-3 overflow-y-auto p-4">
+      <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto p-4">
         {msgs.length === 0 ? (
           <p className="text-sm text-brand-ink/45">{t.empty}</p>
         ) : null}

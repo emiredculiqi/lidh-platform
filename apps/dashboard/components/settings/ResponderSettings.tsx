@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useT } from "@/lib/i18n";
@@ -34,6 +34,8 @@ export function ResponderSettingsForm({
   );
   const [busy, setBusy] = useState(false);
   const [state, setState] = useState<"idle" | "saved" | "error">("idle");
+  // What the server currently holds — for the "unsaved changes" signal.
+  const [persisted, setPersisted] = useState<ResponderSettings>(initial);
 
   const t = useT({
     al: {
@@ -54,6 +56,8 @@ export function ResponderSettingsForm({
       save: "Ruaj",
       saved: "U ruajt — vlen nga mesazhi i ardhshëm.",
       error: "Nuk u ruajt. Kontrollo orët dhe provo sërish.",
+      saving: "Po ruhet…",
+      unsaved: "Ndryshime të paruajtura — shtyp Ruaj që të hyjnë në fuqi.",
     },
     en: {
       human: "The team answers",
@@ -73,6 +77,8 @@ export function ResponderSettingsForm({
       save: "Save",
       saved: "Saved — applies from the next message.",
       error: "Not saved. Check the hours and try again.",
+      saving: "Saving…",
+      unsaved: "Unsaved changes — press Save to apply them.",
     },
   });
 
@@ -91,33 +97,87 @@ export function ResponderSettingsForm({
     );
   }
 
-  async function save() {
-    if (busy) return;
+  /**
+   * Persist. `nextMode` is passed by the radio click because state updates
+   * are async; a plain mode change sends the last VALID windows, so a
+   * half-edited schedule can never block switching to human or assistant.
+   */
+  async function save(nextMode?: ResponderMode): Promise<boolean> {
+    if (busy) return false;
+    const m = nextMode ?? mode;
     setBusy(true);
     setState("idle");
     try {
-      await api.setResponder(slug, {
-        mode,
-        timezone: timezone.trim() || "Europe/Tirane",
-        windows,
+      const r = await api.setResponder(slug, {
+        mode: m,
+        timezone: (m === "schedule" ? timezone : persisted.timezone).trim() || "Europe/Tirane",
+        windows: m === "schedule" ? windows : persisted.windows,
       });
+      setPersisted(r);
       setState("saved");
       router.refresh();
+      return true;
     } catch {
       setState("error");
+      return false;
     } finally {
       setBusy(false);
     }
   }
 
+  // The mode is one field, so it saves on click — the Save button below is
+  // only for the schedule, which needs hours before it can apply. Reverts
+  // the radio if the server refused.
+  function pick(value: ResponderMode) {
+    if (busy || value === mode) return;
+    const prev = mode;
+    setMode(value);
+    if (value === "schedule") {
+      setState("idle");
+      return;
+    }
+    void save(value).then((ok) => {
+      if (!ok) setMode(prev);
+    });
+  }
+
+  const dirty =
+    mode === "schedule" &&
+    (persisted.mode !== "schedule" ||
+      persisted.timezone !== timezone.trim() ||
+      JSON.stringify(persisted.windows) !== JSON.stringify(windows));
+
+  // A closed tab must not lose an edited schedule silently.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  const status =
+    busy ? (
+      <span className="text-[12.5px] text-slate-500">{t.saving}</span>
+    ) : dirty ? (
+      <span className="text-[12.5px] font-medium text-amber-700">{t.unsaved}</span>
+    ) : state === "saved" ? (
+      <span className="text-[12.5px] text-emerald-600">{t.saved}</span>
+    ) : state === "error" ? (
+      <span className="text-[12.5px] text-rose-600">{t.error}</span>
+    ) : null;
+
 
   return (
     <div className="space-y-5">
       <div className="grid gap-3">
-        <Option value="human" label={t.human} help={t.humanHelp} mode={mode} onPick={setMode} />
-        <Option value="ai" label={t.ai} help={t.aiHelp} mode={mode} onPick={setMode} />
-        <Option value="schedule" label={t.schedule} help={t.scheduleHelp} mode={mode} onPick={setMode} />
+        <Option value="human" label={t.human} help={t.humanHelp} mode={mode} onPick={pick} disabled={busy} />
+        <Option value="ai" label={t.ai} help={t.aiHelp} mode={mode} onPick={pick} disabled={busy} />
+        <Option value="schedule" label={t.schedule} help={t.scheduleHelp} mode={mode} onPick={pick} disabled={busy} />
       </div>
+      {mode !== "schedule" ? <div aria-live="polite">{status}</div> : null}
 
       {mode === "schedule" ? (
         <div className="space-y-4 rounded-xl border border-slate-200 p-4">
@@ -202,21 +262,19 @@ export function ResponderSettingsForm({
         </div>
       ) : null}
 
-      <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={save}
-          disabled={busy}
-          className="rounded-xl bg-brand-blue px-5 py-2.5 text-[13.5px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
-        >
-          {t.save}
-        </button>
-        {state === "saved" ? (
-          <span className="text-[12.5px] text-emerald-600">{t.saved}</span>
-        ) : state === "error" ? (
-          <span className="text-[12.5px] text-rose-600">{t.error}</span>
-        ) : null}
-      </div>
+      {mode === "schedule" ? (
+        <div className="flex flex-wrap items-center gap-3" aria-live="polite">
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={busy || !dirty}
+            className="rounded-xl bg-brand-blue px-5 py-2.5 text-[13.5px] font-semibold text-white transition hover:opacity-90 disabled:opacity-50"
+          >
+            {t.save}
+          </button>
+          {status}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -229,16 +287,20 @@ function Option({
   help,
   mode,
   onPick,
+  disabled,
 }: {
   value: ResponderMode;
   label: string;
   help: string;
   mode: ResponderMode;
   onPick: (m: ResponderMode) => void;
+  disabled?: boolean;
 }) {
   return (
     <label
-      className={`flex cursor-pointer gap-3 rounded-xl border px-4 py-3 transition ${
+      className={`flex gap-3 rounded-xl border px-4 py-3 transition ${
+        disabled ? "cursor-wait opacity-70" : "cursor-pointer"
+      } ${
         mode === value
           ? "border-brand-blue bg-brand-blue/5"
           : "border-slate-200 hover:border-slate-300"
@@ -249,6 +311,7 @@ function Option({
         name="responder-mode"
         value={value}
         checked={mode === value}
+        disabled={disabled}
         onChange={() => onPick(value)}
         className="mt-1"
       />

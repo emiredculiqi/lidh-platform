@@ -28,19 +28,68 @@ export function FunnelChat({
   const sessionRef = useRef(`funnel-${Math.random().toString(36).slice(2)}`);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const convIdRef = useRef<string | null>(null);
-  const agentStreamRef = useRef(false);
+  // Which conversation the receive-stream is open for, and a run counter so
+  // a superseded loop (remount, new conversation) exits on its next check.
+  const streamConvRef = useRef<string | null>(null);
+  const streamRunRef = useRef(0);
   const closedRef = useRef(false);
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   // Stop the receive-stream when the chat unmounts (graceful cancel, no
-  // AbortError surfacing in the dev overlay).
-  useEffect(
-    () => () => {
+  // AbortError surfacing in the dev overlay). Re-armed on mount so React's
+  // dev-mode double invocation doesn't leave the stream permanently closed.
+  useEffect(() => {
+    closedRef.current = false;
+    return () => {
       closedRef.current = true;
+      streamConvRef.current = null;
       readerRef.current?.cancel().catch(() => {});
-    },
-    [],
-  );
+    };
+  }, []);
+
+  // The visitor's thread survives a reload: the session id, the conversation
+  // id and the last 30 messages live in this browser, exactly as the
+  // embeddable widget does. Without this every reload started a new
+  // conversation and asked for name and email again (ADR-021).
+  const keys = {
+    session: `lidh:fsess:${tenantSlug}`,
+    conv: `lidh:fconv:${tenantSlug}`,
+    msgs: `lidh:fmsgs:${tenantSlug}`,
+  };
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem(keys.session);
+      if (s) sessionRef.current = s;
+      else localStorage.setItem(keys.session, sessionRef.current);
+      const stored = JSON.parse(localStorage.getItem(keys.msgs) || "[]") as Msg[];
+      if (Array.isArray(stored) && stored.length) setMsgs(stored.slice(-30));
+      const c = localStorage.getItem(keys.conv);
+      if (c) {
+        convIdRef.current = c;
+        void openAgentStream(c);
+      }
+    } catch {
+      /* private mode etc. — the chat still works, it just won't survive a reload */
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantSlug]);
+
+  // Persist the transcript (never an empty streaming placeholder) and keep
+  // the newest message in view.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        keys.msgs,
+        JSON.stringify(msgs.filter((m) => m.text).slice(-30)),
+      );
+    } catch {
+      /* ignore */
+    }
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msgs]);
 
   function autoGrow() {
     const el = taRef.current;
@@ -73,22 +122,26 @@ export function FunnelChat({
     },
   });
 
-  // Listen for human/agent messages pushed during a takeover.
+  // Listen for human/agent messages pushed during a takeover. One stream per
+  // conversation; a later call for another conversation (or after a remount)
+  // supersedes the running loop, which exits on its next check.
   async function openAgentStream(convId: string) {
-    if (agentStreamRef.current) return;
-    agentStreamRef.current = true;
-    while (!closedRef.current) {
+    if (streamConvRef.current === convId) return;
+    streamConvRef.current = convId;
+    const run = ++streamRunRef.current;
+    const alive = () => !closedRef.current && streamRunRef.current === run;
+    while (alive()) {
       try {
         const res = await fetch(
           `${apiBase}/v1/live/widget?conversationId=${encodeURIComponent(convId)}`,
         );
-        if (closedRef.current) return;
+        if (!alive()) return;
         if (!res.ok || !res.body) throw new Error(`stream ${res.status}`);
         const reader = res.body.getReader();
         readerRef.current = reader;
         const dec = new TextDecoder();
         let buf = "";
-        while (!closedRef.current) {
+        while (alive()) {
           const { done, value } = await reader.read();
           if (done) break;
           buf += dec.decode(value, { stream: true });
@@ -108,10 +161,14 @@ export function FunnelChat({
             }
           }
         }
+        if (!alive()) {
+          reader.cancel().catch(() => {});
+          return;
+        }
       } catch {
         /* network drop */
       }
-      if (closedRef.current) return;
+      if (!alive()) return;
       await new Promise((r) => setTimeout(r, 5000)); // reconnect
     }
   }
@@ -177,6 +234,11 @@ export function FunnelChat({
           const data = JSON.parse(d);
           if (ev === "meta" && data.conversationId) {
             convIdRef.current = data.conversationId;
+            try {
+              localStorage.setItem(keys.conv, data.conversationId);
+            } catch {
+              /* ignore */
+            }
             void openAgentStream(data.conversationId);
           } else if (ev === "text") {
             assistant += data.delta;
@@ -225,7 +287,7 @@ export function FunnelChat({
         <p className="text-sm opacity-80">{t.poweredBy}</p>
         <p className="font-display text-lg font-semibold">{businessName}</p>
       </div>
-      <div className="flex-1 space-y-3 overflow-y-auto p-5">
+      <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto p-5">
         {msgs.length === 0 ? (
           <p className="text-sm text-brand-ink/45">{t.askAnything(businessName)}</p>
         ) : null}
