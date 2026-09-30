@@ -38,7 +38,7 @@ export function ReadOnlyBanner({ dashboard }: { dashboard: string }) {
   return (
     <div
       role="status"
-      className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-amber-200 bg-amber-50 px-7 py-3"
+      className="flex flex-none flex-wrap items-center gap-x-4 gap-y-2 border-b border-amber-200 bg-amber-50 px-4 py-3 md:px-7"
     >
       <svg
         width="18"

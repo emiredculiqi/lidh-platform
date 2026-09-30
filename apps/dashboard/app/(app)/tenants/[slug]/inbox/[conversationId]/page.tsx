@@ -46,7 +46,7 @@ export default async function ThreadPage({
       <MarkRead conversationId={thread.id} signal={thread.messages.length} />
       {/* Thread */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex flex-none items-center gap-3 border-b border-slate-200 px-5 py-3">
+        <div className="flex flex-none items-center gap-3 border-b border-slate-200 px-5 py-3 pr-28 2xl:pr-5">
           <Link
             href={`/tenants/${slug}/inbox`}
             className="text-slate-500 lg:hidden"

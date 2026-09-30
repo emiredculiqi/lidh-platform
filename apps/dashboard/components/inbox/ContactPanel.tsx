@@ -36,7 +36,7 @@ export function ContactPanel({ slug, thread }: { slug: string; thread: Thread })
   const name = contactDisplayName(who) ?? "Vizitor anonim";
 
   return (
-    <aside className="hidden w-[290px] flex-none flex-col border-l border-slate-200 bg-white xl:flex">
+    <aside className="hidden w-[290px] flex-none flex-col border-l border-slate-200 bg-white 2xl:flex">
       <div className="flex flex-col items-center border-b border-slate-200 px-5 py-6 text-center">
         <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-blue/10 text-[20px] font-bold text-brand-blue">
           {contactInitials(who)}

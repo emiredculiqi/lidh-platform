@@ -26,12 +26,12 @@ export function Topbar({ slug }: { slug: string }) {
   const [title, sub] = al ? entry.al : entry.en;
 
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/85 px-7 py-4 backdrop-blur">
+    <header className="z-20 flex flex-none items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3 md:px-7 md:py-4">
       <div>
-        <h1 className="text-[21px] font-bold tracking-tight text-brand-deep">
+        <h1 className="text-[18px] font-bold tracking-tight text-brand-deep md:text-[21px]">
           {title}
         </h1>
-        <p className="mt-0.5 text-[13px] text-slate-400">{sub}</p>
+        <p className="mt-0.5 hidden text-[13px] text-slate-400 sm:block">{sub}</p>
       </div>
       <div className="flex items-center gap-3">
         <NotificationBell slug={slug} />

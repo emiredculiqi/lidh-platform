@@ -1,5 +1,6 @@
 import { api } from "@/lib/api-server";
 import { Sidebar } from "@/components/shell/Sidebar";
+import { MobileNav } from "@/components/shell/MobileNav";
 import { Topbar } from "@/components/shell/Topbar";
 import { LiveProvider } from "@/components/shell/LiveProvider";
 import { ReadOnlyBanner } from "@/components/shell/ReadOnlyBanner";
@@ -45,7 +46,13 @@ export default async function TenantLayout({
 
   return (
     <LiveProvider slug={slug}>
-      <div className="flex min-h-screen bg-brand-fog">
+      {/* App shell: the viewport is the frame and the content column scrolls,
+          so the inbox can fill exactly the space under the top bar with no
+          magic numbers, and the banner costs nothing to account for.
+          h-screen is the fallback where dvh is unsupported. On phones the
+          bottom tab bar replaces the sidebar; the content is padded by its
+          height (3.5rem + the home-indicator inset) so nothing hides under it. */}
+      <div className="flex h-screen h-dvh bg-brand-fog">
         <Sidebar
           slug={slug}
           tenantName={tenantName}
@@ -53,11 +60,14 @@ export default async function TenantLayout({
           trialDays={trialDays}
           canManageTeam={canManageTeam}
         />
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <ReadOnlyBanner dashboard={dashboardMode} />
           <Topbar slug={slug} />
-          <div className="flex-1 p-7">{children}</div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pt-4 pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] md:p-7">
+            {children}
+          </div>
         </main>
+        <MobileNav slug={slug} canManageTeam={canManageTeam} />
       </div>
     </LiveProvider>
   );

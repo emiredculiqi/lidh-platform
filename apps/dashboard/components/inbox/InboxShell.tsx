@@ -350,7 +350,7 @@ export function InboxShell({
   };
 
   return (
-    <div className="flex h-[calc(100vh-118px)] overflow-hidden rounded-2xl border border-slate-200 bg-white">
+    <div className="-m-4 flex min-h-0 flex-1 overflow-hidden border-slate-200 bg-white md:m-0 md:rounded-2xl md:border">
       {/* Left: conversation list */}
       <div
         className={`${
