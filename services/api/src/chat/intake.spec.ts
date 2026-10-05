@@ -27,6 +27,20 @@ describe("parseName", () => {
     ["Unë jam Besnik Hoxha", "Besnik Hoxha"],
     ["Përshëndetje, quhem Era", "Era"],
     ["Ana, ana@x.al", "Ana"],
+    // The forms people actually type (found in testing, 2026-10-05).
+    ["un ja redi", "Redi"],
+    ["Un jam Redi", "Redi"],
+    ["une ja Era", "Era"],
+    ["emri im është Era", "Era"],
+    ["emri im eshte besnik hoxha", "Besnik Hoxha"],
+    ["me thone Beni", "Beni"],
+    ["më quajnë Arta", "Arta"],
+    ["pershendetje jam Redi", "Redi"],
+    ["tung, un ja Redi", "Redi"],
+    ["call me Ana", "Ana"],
+    ["it's Ana", "Ana"],
+    ["redi", "Redi"],
+    ["McDonald", "McDonald"],
   ])("%s → %s", (input, expected) => {
     expect(parseName(input)).toBe(expected);
   });
@@ -37,6 +51,9 @@ describe("parseName", () => {
     expect(parseName("")).toBeNull();
     expect(parseName("I would like to know the price of the apartment in Tirana")).toBeNull();
     expect(parseName("12345")).toBeNull();
+    // Four words after stripping is a sentence — ask again, don't store it.
+    expect(parseName("nuk dua ta them tani")).toBeNull();
+    expect(parseName("jam ketu per nje oferte")).toBeNull();
   });
 });
 

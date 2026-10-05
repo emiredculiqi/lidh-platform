@@ -34,28 +34,56 @@ export function firstEmail(text: string): string | null {
   return m ? m[0].toLowerCase() : null;
 }
 
+// Lead-ins people put before their name, in the forms they actually type:
+// textbook ("unë jam", "quhem"), colloquial and misspelled ("un ja", "un jam",
+// "me thone"), English and Italian. Longest first so "emri im është" wins
+// over "emri im". Matched case-insensitively at the start, after greetings.
+const NAME_LEAD_INS = [
+  // Albanian
+  "emri im është", "emri im eshte", "emri im", "unë quhem", "une quhem", "quhem",
+  "më quajnë", "me quajne", "me quajn", "më thonë", "me thone", "me thon",
+  "më thërrasin", "me therrasin", "unë jam", "une jam", "un jam", "un ja",
+  "une ja", "uj", "jam",
+  // English
+  "my name is", "my name's", "the name is", "name is", "name's", "this is",
+  "call me", "i am", "i'm", "im", "it's", "its",
+  // Italian
+  "mi chiamo", "sono",
+]
+  .sort((a, b) => b.length - a.length)
+  .map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+  .join("|");
+const LEAD_IN = new RegExp(`^(?:${NAME_LEAD_INS})[\\s,:]+`, "iu");
+const GREETING =
+  /^(?:hi|hello|hey|pershendetje|përshëndetje|tung|tungjatjeta|ciao|salut|mirëdita|miredita|mirëmbrëma|mirembrema)[,!. ]+/iu;
+
+/** "redi" → "Redi", "besnik hoxha" → "Besnik Hoxha"; leaves "McDonald" alone. */
+function capitalizeName(s: string): string {
+  return s
+    .split(" ")
+    .map((w) => (w === w.toLowerCase() ? w.charAt(0).toLocaleUpperCase("sq") + w.slice(1) : w))
+    .join(" ");
+}
+
 /**
  * Turn a free-text reply into a name. Handles "Ana", "I'm Ana", "Jam Ana",
- * "my name is Ana B." and "Ana, ana@x.com" (the email is stripped first).
- * Refuses things that are clearly not a name: questions, long sentences,
- * bare emails, empty strings.
+ * "un ja redi", "my name is Ana B." and "Ana, ana@x.com" (the email is
+ * stripped first). Refuses things that are clearly not a name — questions,
+ * sentences, bare emails, empty strings — so the bot asks again instead of
+ * saving "nuk dua ta them" as somebody's name.
  */
 export function parseName(text: string): string | null {
   let t = text.replace(EMAIL, " ").replace(/\s+/g, " ").trim();
   if (!t) return null;
-  // Strip common lead-ins in AL/EN/IT so "Jam Ana" → "Ana".
-  t = t
-    .replace(/^(hi|hello|hey|pershendetje|përshëndetje|ciao|salut)[,!. ]+/i, "")
-    .replace(/^(i am|i'm|im|my name is|this is|jam|une jam|unë jam|quhem|me quajne|më quajnë|sono|mi chiamo)\s+/i, "")
-    .replace(/[.!,;:]+$/, "")
-    .trim();
+  t = t.replace(GREETING, "").replace(LEAD_IN, "").replace(/[.!,;:]+$/, "").trim();
   if (!t || t.length > 60) return null;
   if (t.includes("?")) return null;
-  // More than five words is a sentence, not a name.
-  if (t.split(" ").length > 5) return null;
+  // More than three words is a sentence, not a name (double first names and
+  // a surname still fit).
+  if (t.split(" ").length > 3) return null;
   // Must contain at least one letter.
   if (!/\p{L}/u.test(t)) return null;
-  return t;
+  return capitalizeName(t);
 }
 
 /**
