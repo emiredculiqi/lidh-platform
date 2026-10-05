@@ -1095,6 +1095,14 @@ cannot be spoofed: a visitor has no token.
 - Some visitors will leave at the name prompt. That is the accepted trade for
   an inbox where every web contact is reachable.
 
+**Amended 2026-10-05.** The second detail is *an email or a phone number*,
+not email only — many Albanian customers would rather leave a number, and a
+number typed here is normalised to E.164 and merges into the contact the
+WhatsApp path already keeps for it. The first message of a conversation is
+never read as a name (the bot has not asked yet), and the parser accepts the
+lead-ins people actually type ("un ja redi"). The copy explains the reason —
+so the business knows who it is talking to and can reply — before it asks.
+
 ## ADR-022 — Persona presets: usage check, warn on deactivate, refuse delete while in use
 
 **Status:** Accepted · 2026-09-19.

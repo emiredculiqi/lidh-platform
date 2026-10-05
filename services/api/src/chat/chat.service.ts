@@ -350,11 +350,12 @@ export class ChatService {
     if (gated) {
       const contact = await db.contact.findUnique({
         where: { id: conversation.contactId },
-        select: { id: true, name: true, email: true },
+        select: { id: true, name: true, email: true, phone: true },
       });
       const before: IntakeState = {
         name: contact?.name ?? null,
         email: contact?.email ?? null,
+        phone: contact?.phone ?? null,
       };
       // The bot has asked something once there is an assistant turn in the
       // history; before that, the visitor's message is their greeting or
@@ -366,7 +367,11 @@ export class ChatService {
       if (step !== "done") {
         // Remember whatever was captured (a name at the name prompt, an
         // email volunteered early) so the next reply builds on it.
-        if (after.name !== before.name || after.email !== before.email) {
+        if (
+          after.name !== before.name ||
+          after.email !== before.email ||
+          after.phone !== before.phone
+        ) {
           await this.saveIntakeProgress(conversation.contactId, after);
         }
         // Retry wording when this reply was meant to answer the current
@@ -566,11 +571,15 @@ export class ChatService {
     try {
       await db.contact.update({
         where: { id: contactId },
-        data: { name: s.name ?? undefined, email: s.email ?? undefined },
+        data: {
+          name: s.name ?? undefined,
+          email: s.email ?? undefined,
+          phone: s.phone ?? undefined,
+        },
       });
     } catch {
-      // A duplicate email on the placeholder is resolved at completion by
-      // merging into the existing contact; don't fail the prompt over it.
+      // A duplicate email/phone on the placeholder is resolved at completion
+      // by merging into the existing contact; don't fail the prompt over it.
       await db.contact.update({
         where: { id: contactId },
         data: { name: s.name ?? undefined },
@@ -592,11 +601,20 @@ export class ChatService {
     s: IntakeState,
   ): Promise<void> {
     const db = this.prisma.client;
-    const email = s.email as string;
-    const existing = await db.contact.findUnique({
-      where: { tenantId_email: { tenantId, email } },
-      select: { id: true, name: true },
-    });
+    // Identity is the email when given, else the phone (E.164, the shape the
+    // WhatsApp path stores — so a visitor typing their WhatsApp number lands
+    // on the contact that already exists for it).
+    const existing = s.email
+      ? await db.contact.findUnique({
+          where: { tenantId_email: { tenantId, email: s.email } },
+          select: { id: true, name: true },
+        })
+      : s.phone
+        ? await db.contact.findUnique({
+            where: { tenantId_phone: { tenantId, phone: s.phone } },
+            select: { id: true, name: true },
+          })
+        : null;
 
     let contactId = placeholderContactId;
     if (existing && existing.id !== placeholderContactId) {
@@ -606,14 +624,29 @@ export class ChatService {
       });
       await db.contact.update({
         where: { id: existing.id },
+        data: {
+          name: existing.name ?? s.name ?? undefined,
+          // Fill in whatever the known contact was missing — never overwrite.
+          ...(s.email ? { email: s.email } : {}),
+          ...(s.phone ? { phone: s.phone } : {}),
+          lastSeenAt: new Date(),
+        },
+      }).catch(() => db.contact.update({
+        // The other detail may belong to a third contact; keep the merge.
+        where: { id: existing.id },
         data: { name: existing.name ?? s.name ?? undefined, lastSeenAt: new Date() },
-      });
+      }));
       await db.contact.delete({ where: { id: placeholderContactId } });
       contactId = existing.id;
     } else {
       await db.contact.update({
         where: { id: placeholderContactId },
-        data: { name: s.name ?? undefined, email, lastSeenAt: new Date() },
+        data: {
+          name: s.name ?? undefined,
+          email: s.email ?? undefined,
+          phone: s.phone ?? undefined,
+          lastSeenAt: new Date(),
+        },
       });
       await db.conversation.update({
         where: { id: conversationId },
