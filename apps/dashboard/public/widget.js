@@ -9,6 +9,11 @@
  *
  * data-* : data-tenant (required), data-api, data-title, data-locale,
  *          data-greeting, data-teaser.
+ *
+ * The chat opens with the business's own first line (GET /v1/chat/opener —
+ * the intake question, ADR-021), typed word by word, and the header says who
+ * answers right now. data-title overrides the business name; data-greeting
+ * is an optional extra line shown before that question.
  */
 (function () {
   "use strict";
@@ -24,15 +29,20 @@
   var cfg = {
     tenant: script.getAttribute("data-tenant"),
     api: (script.getAttribute("data-api") || "https://api.lidh.al").replace(/\/$/, ""),
-    title: script.getAttribute("data-title") || (al ? "Asistenti" : "Assistant"),
+    title: script.getAttribute("data-title") || "",
+    customGreeting: script.getAttribute("data-greeting") || "",
     locale: al ? "al" : "en",
-    greeting:
-      script.getAttribute("data-greeting") ||
-      (al ? "Përshëndetje! 👋 Si mund t'ju ndihmoj sot?" : "Hi! 👋 How can I help you today?"),
     teaser:
       script.getAttribute("data-teaser") ||
       (al ? "Pyetje? Bisedo me ne 👋" : "Questions? Chat with us 👋"),
-    subtitle: al ? "Online tani — përgjigje në sekonda" : "Online now — replies in seconds",
+    subtitle: "",
+  };
+  var COPY = {
+    answersNow: al ? "Online tani — përgjigje në sekonda" : "Online now — replies in seconds",
+    answersSoon: al ? "Zakonisht përgjigjemi brenda pak minutash" : "We usually reply within a few minutes",
+    poweredBy: al ? "Mundësuar nga Lidh.al" : "Powered by Lidh.al",
+    poweredByAi: al ? "Asistent me IA · Mundësuar nga Lidh.al" : "AI assistant · Powered by Lidh.al",
+    fallbackTitle: al ? "Biseda" : "Chat",
   };
   if (!cfg.tenant) {
     console.error("[lidh] widget: missing data-tenant");
@@ -144,12 +154,28 @@
     '<button class="send" type="submit" aria-label="Send" disabled>' + I_SEND + "</button></form>" +
     // AI disclosure — the end user must be able to tell the replies are
     // automated. Localised alongside the vendor credit so it costs no chrome.
-    '<div class="credit">' + (al ? "Asistent me IA · Mundësuar nga Lidh.al" : "AI assistant · Powered by Lidh.al") + "</div></div>" +
+    '<div class="credit">' + COPY.poweredBy + "</div></div>" +
     "</div>";
 
   var $ = function (s) { return root.querySelector(s); };
-  $(".head .t").textContent = cfg.title;
-  $(".head .s span").textContent = cfg.subtitle;
+  $(".head .t").textContent = cfg.title || COPY.fallbackTitle;
+  $(".head .s span").textContent = "";
+
+  // Who answers, and what the chat says first. Read-only; the server
+  // regenerates the same opener when the first message arrives with
+  // intakeAsked, so the transcript matches what the visitor saw.
+  var opener = null;
+  var openerReady = fetch(cfg.api + "/v1/chat/opener?tenantSlug=" + encodeURIComponent(cfg.tenant) + "&locale=" + cfg.locale)
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (o) {
+      if (!o) return null;
+      opener = o;
+      if (!cfg.title) $(".head .t").textContent = o.businessName || COPY.fallbackTitle;
+      $(".head .s span").textContent = o.responder === "ai" ? COPY.answersNow : COPY.answersSoon;
+      $(".credit").textContent = o.responder === "ai" ? COPY.poweredByAi : COPY.poweredBy;
+      return o;
+    })
+    .catch(function () { return null; });
 
   var ring = $(".ring"),
     launch = $(".launch"),
@@ -177,7 +203,23 @@
       // On mobile the panel is full-screen, so the floating launcher would
       // overlap the input. Hide it — the header ✕ closes the panel there.
       if (mq.matches) launch.style.display = "none";
-      if (!history.length && !greeted) { greeted = true; addMsg("a", cfg.greeting); }
+      if (!history.length && !greeted) {
+        greeted = true;
+        openerReady.then(function (o) {
+          var lines = [];
+          if (cfg.customGreeting) lines.push(cfg.customGreeting);
+          if (o && o.text) lines.push(o.text);
+          if (!lines.length) lines.push(al ? "Përshëndetje! 👋 Shkruani mesazhin tuaj." : "Hi! 👋 Write your message.");
+          (function next(k) {
+            if (k >= lines.length) return;
+            typeMsg(lines[k], function () {
+              history.push({ role: "assistant", content: lines[k] });
+              persist();
+              next(k + 1);
+            });
+          })(0);
+        });
+      }
       setTimeout(function () { input.focus(); scrollDown(); }, 70);
     } else {
       panel.classList.add("closing");
@@ -262,6 +304,39 @@
     scrollDown();
     return bub;
   }
+  // Word-by-word reveal. One object per bubble; push() extends the target
+  // (streamed deltas), the ticker reveals through the next whitespace and,
+  // when far behind a fast stream, several words per tick so it never lags.
+  function typewriter(bub, onDone) {
+    var target = "", shown = 0, closed = false, timer = null;
+    function tick() {
+      if (shown >= target.length) {
+        if (closed) { clearInterval(timer); timer = null; if (onDone) onDone(); }
+        return;
+      }
+      var remainingWords = target.slice(shown).split(/\s+/).length;
+      var words = Math.max(1, Math.ceil(remainingWords / 40));
+      var next = shown;
+      for (var i = 0; i < words; i++) {
+        var m = /\s+\S/.exec(target.slice(next + 1));
+        next = m ? next + 1 + m.index + m[0].length - 1 : target.length;
+        if (next >= target.length) break;
+      }
+      shown = Math.min(next, target.length);
+      bub.innerHTML = render(target.slice(0, shown));
+      scrollDown();
+    }
+    return {
+      push: function (delta) { target += delta; if (!timer) timer = setInterval(tick, 38); },
+      close: function () { closed = true; if (!timer) { if (onDone) onDone(); } },
+      text: function () { return target; },
+    };
+  }
+  function typeMsg(text, onDone) {
+    var tw = typewriter(addMsg("a", ""), onDone);
+    tw.push(text);
+    tw.close();
+  }
   function addEffect(type) {
     var d = document.createElement("div");
     d.className = "eff";
@@ -305,9 +380,9 @@
             try {
               var p = JSON.parse(data);
               if (p.type === "agent_message" && p.text) {
-                addMsg("a", p.text);
                 history.push({ role: "assistant", content: p.text });
                 persist();
+                typeMsg(p.text);
               }
             } catch (e) {}
           }
@@ -347,11 +422,18 @@
     typing.innerHTML = '<div class="b"><span></span><span></span><span></span></div>';
     msgs.appendChild(typing);
     scrollDown();
-    var bub = null, acc = "", sawEffect = false;
+    var bub = null, tw = null, acc = "", sawEffect = false;
     var entry = { role: "assistant", content: "" };
     function ensureBubble() {
-      if (!bub) { if (typing.parentNode) typing.parentNode.removeChild(typing); bub = addMsg("a", ""); }
+      if (!bub) {
+        if (typing.parentNode) typing.parentNode.removeChild(typing);
+        bub = addMsg("a", "");
+        tw = typewriter(bub);
+      }
     }
+    // No conversation yet and the opener is on screen: this message answers
+    // "what's your name?" (the server stores the opener as the first line).
+    var intakeAsked = !conversationId && history.some(function (m) { return m.role === "assistant"; });
     try {
       var res = await fetch(cfg.api + "/v1/chat/web", {
         method: "POST",
@@ -362,6 +444,7 @@
           sessionRef: sessionRef,
           conversationId: conversationId || undefined,
           locale: cfg.locale,
+          intakeAsked: intakeAsked || undefined,
         }),
       });
       if (!res.ok || !res.body) throw new Error("HTTP " + res.status);
@@ -390,8 +473,7 @@
             ensureBubble();
             acc += payload.delta;
             entry.content = acc;
-            bub.innerHTML = render(acc);
-            scrollDown();
+            tw.push(payload.delta);
           } else if (evName === "effect" && payload.type) {
             sawEffect = true;
             // During a human take-over the operator is already replying live
@@ -404,6 +486,7 @@
         }
       }
       if (acc) {
+        tw.close();
         history.push(entry);
         persist();
       } else if (!sawEffect) {

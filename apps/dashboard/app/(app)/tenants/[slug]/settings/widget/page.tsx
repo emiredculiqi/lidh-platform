@@ -32,8 +32,7 @@ export default async function WidgetSettingsPage({
   const advanced = `<script
   src="${APP_URL}/widget.js"
   data-tenant="${slug}"
-  data-title="Përshëndetje 👋"
-  data-greeting="Si mund t'ju ndihmoj sot?"
+  data-title="Dyqani Bela"
   data-locale="al"
   defer
 ></script>`;
@@ -100,8 +99,8 @@ export default async function WidgetSettingsPage({
           <table className="w-full text-sm">
             <tbody className="divide-y divide-slate-100">
               {[
-                ["data-title", <T key="t" al="Titulli në krye të dritares" en="Title in the panel header" />],
-                ["data-greeting", <T key="g" al="Mesazhi i parë kur hapet biseda" en="Opening message when the chat opens" />],
+                ["data-title", <T key="t" al="Titulli në krye të dritares (parazgjedhja: emri i biznesit)" en="Title in the panel header (default: the business name)" />],
+                ["data-greeting", <T key="g" al="Një rresht shtesë para pyetjes së parë (jo i detyrueshëm — biseda hapet vetë me pyetjen për emrin)" en="An extra line before the first question (optional — the chat opens with the name question by itself)" />],
                 ["data-locale", <T key="l" al="Gjuha e përgjigjeve: al ose en" en="Reply language: al or en" />],
               ].map(([attr, desc]) => (
                 <tr key={attr as string}>

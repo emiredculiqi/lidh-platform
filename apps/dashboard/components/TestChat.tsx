@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { apiBase } from "@/lib/api";
 import { useT } from "@/lib/i18n";
-import { Markdown } from "./Markdown";
+import { TypedText } from "./TypedText";
 import { useAuth } from "@clerk/nextjs";
 
 type Msg = { role: "user" | "assistant"; text: string };
@@ -140,7 +140,7 @@ export function TestChat({ tenantSlug }: { tenantSlug: string }) {
             >
               {m.role === "assistant" ? (
                 m.text ? (
-                  <Markdown content={m.text} />
+                  <TypedText text={m.text} />
                 ) : (
                   busy && "…"
                 )

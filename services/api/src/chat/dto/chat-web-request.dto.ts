@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import {
+  IsBoolean,
   IsOptional,
   IsString,
   MaxLength,
@@ -61,4 +62,30 @@ export class ChatWebRequestDto {
   @IsOptional()
   @IsString()
   locale?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "The widget already showed the intake opener (from GET /chat/opener) " +
+      "before this first message, so the message answers \"what's your " +
+      "name?\". Only honoured when this call creates the conversation; the " +
+      "opener is then stored as its first message so the transcript matches.",
+    example: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  intakeAsked?: boolean;
+}
+
+/** GET /chat/opener response. */
+export class ChatOpenerDto {
+  @ApiProperty({ example: "Përshëndetje, mirë se vini te Bela Shoes! …" }) text!: string;
+  @ApiProperty({ example: "Bela Shoes" }) businessName!: string;
+  @ApiProperty({ example: "al" }) locale!: string;
+  @ApiProperty({
+    enum: ["human", "ai"],
+    description: "Who answers new conversations right now (business setting + schedule; no thread override yet).",
+  })
+  responder!: "human" | "ai";
+  @ApiProperty({ description: "False when the business is offline (trial lapsed, archived)." })
+  isActive!: boolean;
 }

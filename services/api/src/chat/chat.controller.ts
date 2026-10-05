@@ -1,9 +1,9 @@
-import { Body, Controller, Post, Req, Res } from "@nestjs/common";
-import { ApiOperation, ApiTags } from "@nestjs/swagger";
+import { Body, Controller, Get, Post, Query, Req, Res } from "@nestjs/common";
+import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from "@nestjs/swagger";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { Public } from "../common/auth/public.decorator";
 import { ChatService } from "./chat.service";
-import { ChatWebRequestDto } from "./dto/chat-web-request.dto";
+import { ChatOpenerDto, ChatWebRequestDto } from "./dto/chat-web-request.dto";
 
 @ApiTags("Chat")
 @Controller("chat")
@@ -22,6 +22,30 @@ export class ChatController {
    *
    * @Res() opts out of Nest's auto-response so we own the FastifyReply.
    */
+  /**
+   * What the chat says before the visitor types anything (ADR-021): the
+   * intake opener, plus who answers right now so the widget's header and
+   * disclosure tell the truth. Public, read-only, no event.
+   */
+  @Public()
+  @Get("opener")
+  @ApiOperation({
+    summary: "The chat's opening line and who answers (public)",
+    description:
+      "The widget and the public page call this when the panel opens with " +
+      "no history, show the line word by word, and send `intakeAsked: true` " +
+      "with the visitor's first message. Writes nothing.",
+  })
+  @ApiQuery({ name: "tenantSlug", example: "acme-coffee" })
+  @ApiQuery({ name: "locale", required: false, example: "al" })
+  @ApiOkResponse({ type: ChatOpenerDto })
+  opener(
+    @Query("tenantSlug") tenantSlug: string,
+    @Query("locale") locale?: string,
+  ): Promise<ChatOpenerDto> {
+    return this.chat.opener(tenantSlug, locale);
+  }
+
   @Public()
   @Post("web")
   @ApiOperation({

@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { apiBase } from "@/lib/api";
 import { useT } from "@/lib/i18n";
-import { Markdown } from "./Markdown";
+import { TypedText } from "./TypedText";
 
 type Msg = { role: "user" | "assistant"; text: string };
+type Opener = { text: string; businessName: string; locale: string; responder: "human" | "ai"; isActive: boolean };
 
 /**
  * Public, branded funnel chat — the customer-facing front door rendered on the
@@ -25,6 +26,10 @@ export function FunnelChat({
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // Who answers right now — drives the header line and the AI disclosure.
+  const [responder, setResponder] = useState<"human" | "ai" | null>(null);
+  // Messages restored from storage render at once; new ones are typed.
+  const restoredCount = useRef(0);
   const sessionRef = useRef(`funnel-${Math.random().toString(36).slice(2)}`);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const convIdRef = useRef<string | null>(null);
@@ -63,7 +68,10 @@ export function FunnelChat({
       if (s) sessionRef.current = s;
       else localStorage.setItem(keys.session, sessionRef.current);
       const stored = JSON.parse(localStorage.getItem(keys.msgs) || "[]") as Msg[];
-      if (Array.isArray(stored) && stored.length) setMsgs(stored.slice(-30));
+      if (Array.isArray(stored) && stored.length) {
+        restoredCount.current = Math.min(stored.length, 30);
+        setMsgs(stored.slice(-30));
+      }
       const c = localStorage.getItem(keys.conv);
       if (c) {
         convIdRef.current = c;
@@ -72,6 +80,21 @@ export function FunnelChat({
     } catch {
       /* private mode etc. — the chat still works, it just won't survive a reload */
     }
+    // The bot speaks first (ADR-021): the opener is the intake question, so
+    // the visitor's first message is their name. Also learns who answers.
+    void (async () => {
+      try {
+        const res = await fetch(
+          `${apiBase}/v1/chat/opener?tenantSlug=${encodeURIComponent(tenantSlug)}`,
+        );
+        if (!res.ok) return;
+        const o = (await res.json()) as Opener;
+        setResponder(o.responder);
+        setMsgs((m) => (m.length === 0 ? [{ role: "assistant", text: o.text }] : m));
+      } catch {
+        /* no opener — the server still asks after the first message */
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantSlug]);
 
@@ -103,7 +126,10 @@ export function FunnelChat({
       // AI disclosure: the end user must be able to tell they are talking to an
       // automated assistant, not a person. Kept in the same line as the vendor
       // credit so it is visible without adding chrome.
-      poweredBy: "Asistent me IA · Mundësuar nga Lidh.al",
+      poweredBy: "Mundësuar nga Lidh.al",
+      poweredByAi: "Asistent me IA · Mundësuar nga Lidh.al",
+      answersNow: "Online tani — përgjigje në sekonda",
+      answersSoon: "Zakonisht përgjigjemi brenda pak minutash",
       askAnything: (business: string) =>
         `Pyetni çfarëdo për ${business} — orare, shërbime, çmime…`,
       messagePlaceholder: "Shkruani një mesazh…",
@@ -112,7 +138,10 @@ export function FunnelChat({
       failed: "Diçka shkoi keq. Provoni përsëri.",
     },
     en: {
-      poweredBy: "AI assistant · Powered by Lidh.al",
+      poweredBy: "Powered by Lidh.al",
+      poweredByAi: "AI assistant · Powered by Lidh.al",
+      answersNow: "Online now — replies in seconds",
+      answersSoon: "We usually reply within a few minutes",
       askAnything: (business: string) =>
         `Ask anything about ${business} — hours, services, prices…`,
       messagePlaceholder: "Write a message…",
@@ -215,6 +244,9 @@ export function FunnelChat({
           message,
           sessionRef: sessionRef.current,
           conversationId: convIdRef.current ?? undefined,
+          // No conversation yet and the opener is on screen: this message
+          // answers "what's your name?".
+          intakeAsked: !convIdRef.current && msgs.some((m) => m.role === "assistant") ? true : undefined,
         }),
       });
       const reader = res.body?.getReader();
@@ -284,8 +316,10 @@ export function FunnelChat({
   return (
     <div className="mx-auto flex h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-brand-ink/10 bg-white shadow-glow">
       <div className="bg-brand-gradient px-5 py-4 text-white">
-        <p className="text-sm opacity-80">{t.poweredBy}</p>
         <p className="font-display text-lg font-semibold">{businessName}</p>
+        <p className="text-sm opacity-80">
+          {responder === "ai" ? t.answersNow : responder === "human" ? t.answersSoon : "\u00a0"}
+        </p>
       </div>
       <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto p-5">
         {msgs.length === 0 ? (
@@ -305,7 +339,7 @@ export function FunnelChat({
             >
               {m.role === "assistant" ? (
                 m.text ? (
-                  <Markdown content={m.text} />
+                  <TypedText text={m.text} animate={i >= restoredCount.current} />
                 ) : (
                   busy && "…"
                 )
@@ -339,6 +373,10 @@ export function FunnelChat({
           {busy ? "…" : t.send}
         </button>
       </form>
+      {/* The AI disclosure stays only while the assistant actually answers. */}
+      <p className="border-t border-brand-ink/10 py-2 text-center text-[11px] text-brand-ink/60">
+        {responder === "ai" ? t.poweredByAi : t.poweredBy}
+      </p>
     </div>
   );
 }

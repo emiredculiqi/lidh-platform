@@ -1103,6 +1103,18 @@ never read as a name (the bot has not asked yet), and the parser accepts the
 lead-ins people actually type ("un ja redi"). The copy explains the reason —
 so the business knows who it is talking to and can reply — before it asks.
 
+**The bot speaks first (2026-10-05).** The widget and the public page open
+with the opener itself (`GET /v1/chat/opener`, a pure read that also says who
+answers right now), so the visitor's first message is their name and nothing
+they type is ignored for two turns. The first message carries `intakeAsked`
+and the server stores the opener as the thread's first line, so the operator
+reads the transcript the visitor saw. Every bot line is revealed word by word
+on the client — model replies, scripted intake lines and a colleague's reply
+pushed live all read the same — and the header tells the truth: the business
+name, "replies in seconds" only when the assistant answers, "we usually reply
+within a few minutes" otherwise, and the AI disclosure only while the
+assistant actually answers.
+
 ## ADR-022 — Persona presets: usage check, warn on deactivate, refuse delete while in use
 
 **Status:** Accepted · 2026-09-19.

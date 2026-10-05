@@ -20,9 +20,13 @@ import { LiveService } from "../common/live/live.service";
 import { TenantContextService } from "../common/tenant-context/tenant-context.service";
 import { assertCanAccessTenant } from "../common/auth/access";
 import { RetrievalService, buildRetrievalQuery } from "./retrieval.service";
-import type { ChatWebRequestDto } from "./dto/chat-web-request.dto";
+import type { ChatOpenerDto, ChatWebRequestDto } from "./dto/chat-web-request.dto";
 import { loadTenantEntitlements } from "../tenants/entitlements";
-import { effectiveResponder, readResponderSettings } from "../tenants/responder";
+import {
+  effectiveResponder,
+  readResponderSettings,
+  resolveResponder,
+} from "../tenants/responder";
 import {
   applyIntakeReply,
   intakeHandoffToTeam,
@@ -172,6 +176,28 @@ export class ChatService {
   }
 
   /**
+   * The line the chat opens with, before the visitor types (ADR-021): the
+   * intake opener for this business and locale, plus who answers right now.
+   * Pure read — the opener text is regenerated identically when the first
+   * message arrives with `intakeAsked`, so what the visitor saw is what the
+   * transcript stores.
+   */
+  async opener(tenantSlug: string, locale?: string): Promise<ChatOpenerDto> {
+    const db = this.prisma.client;
+    const tenant = await db.tenant.findUnique({ where: { slug: tenantSlug } });
+    if (!tenant) throw new NotFoundException("tenant_not_found");
+    const ent = await loadTenantEntitlements(db, tenant);
+    const loc = locale || tenant.defaultLocale;
+    return {
+      text: intakePrompt("name", loc, { name: null, email: null, phone: null }, { business: tenant.name }),
+      businessName: tenant.name,
+      locale: loc,
+      responder: resolveResponder(readResponderSettings(tenant.settings)),
+      isActive: ent.chatEnabled,
+    };
+  }
+
+  /**
    * Orchestrates one web chat turn end-to-end:
    *   resolve tenant → channel → conversation/contact → persist user msg →
    *   RAG retrieve → run @lidh/core → persist assistant msg + tokens.
@@ -302,6 +328,25 @@ export class ChatService {
           intakePending: !preview,
         },
       });
+      // The widget showed the opener before this message (GET /chat/opener).
+      // Store it as the thread's first line so the operator reads the same
+      // transcript the visitor saw, and so the intake knows the bot has
+      // asked — this message is the visitor's name.
+      if (dto.intakeAsked && !preview) {
+        await db.message.create({
+          data: {
+            conversationId: conversation.id,
+            tenantId: tenant.id,
+            role: "assistant",
+            contentText: intakePrompt(
+              "name",
+              locale,
+              { name: null, email: null, phone: null },
+              { business: tenant.name },
+            ),
+          },
+        });
+      }
     }
     // While gated, nothing about this conversation reaches the dashboard.
     const gated = conversation.intakePending;
